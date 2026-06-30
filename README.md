@@ -132,11 +132,31 @@ org-wide defaults):
 Run `npm run db:push` after pulling Phase 4 — it adds the `skills` and `plugin_settings` tables
 and `conversations.skill_ids`.
 
+## Additional tools
+
+Beyond the core Phase 1–4 build, the platform also includes:
+
+- **RFIs** (`/rfis`) — generate formal Request for Information drafts and track responses to close.
+- **Submittal Log** (`/submittals`) — track shop drawings / product data through review status
+  (Pending, Approved, Approved as Noted, Revise & Resubmit, Rejected).
+- **Change Orders** (`/changes`) — draft formal change order documents with cost/schedule impact
+  and track approval status.
+- **Daily Reports** (`/reports`) — turn field notes (weather, labor, work performed, issues) into a
+  formatted daily site report.
+- **Bid Comparison** (`/bids`) — compare 2+ vendor quotes side by side with AI analysis and a
+  recommendation.
+- **Project Knowledge Search** (`/search`) — ask questions across all text-based files attached to
+  your projects; answers are grounded only in your uploaded content.
+- **Field Capture** (`/capture`) — mobile-optimized camera capture (`capture="environment"`) for
+  photographing a plan or invoice directly from the job site and analyzing it on the spot.
+- **Admin cost dashboard** — `/admin` now shows total spend, total tokens, automation run counts,
+  and a cost-by-feature breakdown in addition to per-user usage.
+
 ## Roadmap
 
 - ~~**Phase 2 — Google**~~ · ~~**Phase 3 — Automations**~~ · ~~**Phase 4 — Skills & plugins**~~ — all done.
-- Possible next: RFI/submittal/change-order generators, bid comparison, project-knowledge RAG,
-  a richer admin cost dashboard, mobile field capture.
+- ~~RFI/submittal/change-order generators, bid comparison, project-knowledge RAG, richer admin
+  cost dashboard, mobile field capture~~ — all done.
 
 ## Project layout
 
