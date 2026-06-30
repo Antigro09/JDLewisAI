@@ -2,7 +2,12 @@ import { getValidAccessToken, GoogleNotConnectedError } from "@/lib/google/clien
 import { driveSearch, driveReadFile } from "@/lib/google/drive";
 import { docsCreate, docsAppendText, docsReplaceText } from "@/lib/google/docs";
 import { sheetsCreate, sheetsAppendRows, sheetsRead } from "@/lib/google/sheets";
-import { gmailSearch, gmailReadMessage, gmailSend } from "@/lib/google/gmail";
+import {
+  gmailSearch,
+  gmailReadMessage,
+  gmailSend,
+  gmailCreateDraft,
+} from "@/lib/google/gmail";
 
 export type GoogleToolKind = "read" | "write";
 
@@ -304,6 +309,35 @@ export const GOOGLE_TOOLS: GoogleTool[] = [
     },
   },
   {
+    name: "gmail_create_draft",
+    kind: "write",
+    definition: {
+      name: "gmail_create_draft",
+      description:
+        "Create a draft email in the user's Gmail (does NOT send it — a human sends later).",
+      input_schema: {
+        type: "object",
+        properties: {
+          to: { type: "string" },
+          subject: { type: "string" },
+          body: { type: "string" },
+          cc: { type: "string" },
+        },
+        required: ["to", "subject", "body"],
+      },
+    },
+    describe: (i) => `Create a Gmail draft to ${str(i.to)} — "${str(i.subject)}"`,
+    exec: async (token, i) => {
+      const r = await gmailCreateDraft(token, {
+        to: str(i.to),
+        subject: str(i.subject),
+        body: str(i.body),
+        cc: i.cc ? str(i.cc) : undefined,
+      });
+      return { output: JSON.stringify(r), summary: `Draft created to ${str(i.to)}` };
+    },
+  },
+  {
     name: "gmail_send",
     kind: "write",
     definition: {
@@ -336,6 +370,11 @@ export const GOOGLE_TOOLS: GoogleTool[] = [
     },
   },
 ];
+
+/** Tools available to unattended automations — everything except sending email. */
+export const AUTOMATION_TOOL_NAMES = GOOGLE_TOOLS.map((t) => t.name).filter(
+  (n) => n !== "gmail_send",
+);
 
 export function getGoogleTool(name: string): GoogleTool | undefined {
   return GOOGLE_TOOLS.find((t) => t.name === name);

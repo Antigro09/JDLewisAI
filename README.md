@@ -88,10 +88,32 @@ encrypted (`lib/crypto.ts`, AES-256-GCM) and refreshed automatically. Each user 
 Run `npm run db:push` after pulling Phase 2 — it adds `messages.raw_content` and
 `conversations.pending_tool_uses`.
 
+## Automations (Phase 3)
+
+Describe a recurring task in plain language (e.g. *"every hour, find new emails labeled `bids`
+and append the sender, subject, and date to the 'Bid Tracker' sheet"*). It runs unattended on a
+schedule **as you**, using your Google connection and the same AI tool loop. Safety: automations
+can read Gmail/Drive, create & edit Docs/Sheets, and create Gmail **drafts**, but **never send
+email**.
+
+- Manage at **Automations** in the sidebar: create, set interval (15 min / 30 min / hourly / 6 h /
+  daily), enable/pause, **Run now**, and view per-run history + transcripts.
+- Execution is in-app: a secured endpoint `/api/cron/run` runs due automations. Set **`CRON_SECRET`**
+  and let a scheduler hit it on an interval.
+
+**Trigger setup:**
+
+- **Vercel Cron (Pro):** `vercel.json` already declares a `*/15 * * * *` schedule for
+  `/api/cron/run`; Vercel sends `Authorization: Bearer $CRON_SECRET` automatically. (Hobby plans
+  only allow daily cron.)
+- **Any plan / external:** point any scheduler (cron-job.org, GitHub Actions, …) at
+  `POST https://YOUR_APP/api/cron/run` with header `Authorization: Bearer $CRON_SECRET`.
+
+Run `npm run db:push` after pulling Phase 3 — it adds the new `automations` columns, the
+`automation_runs` table, and `conversations.automation_id`.
+
 ## Roadmap (later phases)
-- **Phase 3 — Automations/routines:** natural-language automations that run indefinitely and
-  connect apps (e.g. group emails → spreadsheet), via scheduled jobs / Managed Agents
-  (`automations` table is scaffolded).
+- ~~**Phase 3 — Automations/routines**~~ — done (see Automations above).
 - **Phase 4 — Plugins & skills:** user/admin-managed skill packages and tool bundles.
 
 ## Project layout

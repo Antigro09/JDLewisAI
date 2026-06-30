@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   conversations,
@@ -38,7 +38,12 @@ export async function listConversations(userId: string) {
   return db
     .select({ id: conversations.id, title: conversations.title })
     .from(conversations)
-    .where(eq(conversations.userId, userId))
+    .where(
+      and(
+        eq(conversations.userId, userId),
+        isNull(conversations.automationId),
+      ),
+    )
     .orderBy(desc(conversations.updatedAt))
     .limit(50);
 }
