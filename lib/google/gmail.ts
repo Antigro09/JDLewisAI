@@ -100,10 +100,12 @@ export async function gmailReadMessage(
   };
 }
 
-export async function gmailSend(
-  token: string,
-  opts: { to: string; subject: string; body: string; cc?: string },
-): Promise<{ id: string; threadId: string }> {
+function buildRaw(opts: {
+  to: string;
+  subject: string;
+  body: string;
+  cc?: string;
+}): string {
   const lines = [
     `To: ${opts.to}`,
     opts.cc ? `Cc: ${opts.cc}` : "",
@@ -112,10 +114,26 @@ export async function gmailSend(
     "",
     opts.body,
   ].filter((l) => l !== "");
-  const raw = b64urlEncode(lines.join("\r\n"));
+  return b64urlEncode(lines.join("\r\n"));
+}
+
+export async function gmailSend(
+  token: string,
+  opts: { to: string; subject: string; body: string; cc?: string },
+): Promise<{ id: string; threadId: string }> {
   return gfetch<{ id: string; threadId: string }>(
     token,
     `${API}/messages/send`,
-    { method: "POST", body: JSON.stringify({ raw }) },
+    { method: "POST", body: JSON.stringify({ raw: buildRaw(opts) }) },
   );
+}
+
+export async function gmailCreateDraft(
+  token: string,
+  opts: { to: string; subject: string; body: string; cc?: string },
+): Promise<{ id: string }> {
+  return gfetch<{ id: string }>(token, `${API}/drafts`, {
+    method: "POST",
+    body: JSON.stringify({ message: { raw: buildRaw(opts) } }),
+  });
 }

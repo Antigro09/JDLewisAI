@@ -113,6 +113,12 @@ export type RunAgentOptions = {
   googleEnabled: boolean;
   liveAttachments?: Attachment[];
   liveText?: string;
+  /** Execute write/send tools without pausing (unattended automation runs). */
+  autoApprove?: boolean;
+  /** Restrict which Google tools are available (by tool name). */
+  toolNames?: string[];
+  /** Usage-metering feature label (default "chat"). */
+  usageFeature?: string;
 };
 
 /**
@@ -141,7 +147,10 @@ export async function* runAgentTurn(
     }
   }
 
-  const tools = opts.googleEnabled ? googleToolDefinitions() : undefined;
+  let tools = opts.googleEnabled ? googleToolDefinitions() : undefined;
+  if (tools && opts.toolNames) {
+    tools = tools.filter((d) => opts.toolNames!.includes(d.name));
+  }
   let inTok = 0;
   let outTok = 0;
 
@@ -149,7 +158,7 @@ export async function* runAgentTurn(
     await recordUsage({
       userId: opts.userId,
       model: model.id,
-      feature: "chat",
+      feature: opts.usageFeature ?? "chat",
       inputTokens: inTok,
       outputTokens: outTok,
     });
@@ -221,7 +230,7 @@ export async function* runAgentTurn(
       }));
 
       const hasWrite = classified.some((c) => c.kind === "write");
-      if (hasWrite) {
+      if (hasWrite && !opts.autoApprove) {
         const pending: PendingToolUse[] = classified.map((c) => ({
           id: c.id,
           name: c.name,

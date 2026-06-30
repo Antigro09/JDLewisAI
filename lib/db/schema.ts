@@ -111,6 +111,9 @@ export const conversations = pgTable("conversations", {
   effort: text("effort").notNull().default("high"),
   // Tool calls paused awaiting user confirmation (write/send actions).
   pendingToolUses: jsonb("pending_tool_uses").$type<PendingToolUse[]>(),
+  // Set when this conversation is the transcript of an automation run (hidden
+  // from the chat sidebar).
+  automationId: text("automation_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -207,7 +210,7 @@ export const usageEvents = pgTable("usage_events", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-/** Phase 3 — defined now for forward compatibility; no UI yet. */
+/** Scheduled, unattended automations (Phase 3). */
 export const automations = pgTable("automations", {
   id: id(),
   ownerId: text("owner_id")
@@ -217,9 +220,41 @@ export const automations = pgTable("automations", {
   trigger: jsonb("trigger").$type<Record<string, unknown>>(),
   instructions: text("instructions").notNull(),
   status: text("status").$type<"active" | "paused">().notNull().default("paused"),
+  intervalMinutes: integer("interval_minutes").notNull().default(60),
+  model: text("model"),
+  effort: text("effort"),
+  state: jsonb("state").$type<Record<string, unknown>>(),
+  lastError: text("last_error"),
   lastRunAt: timestamp("last_run_at"),
+  nextRunAt: timestamp("next_run_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+export const automationRuns = pgTable("automation_runs", {
+  id: id(),
+  automationId: text("automation_id")
+    .notNull()
+    .references(() => automations.id, { onDelete: "cascade" }),
+  ownerId: text("owner_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  status: text("status")
+    .$type<"running" | "success" | "error">()
+    .notNull()
+    .default("running"),
+  summary: text("summary"),
+  error: text("error"),
+  conversationId: text("conversation_id").references(() => conversations.id, {
+    onDelete: "set null",
+  }),
+  inputTokens: integer("input_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  finishedAt: timestamp("finished_at"),
+});
+
+export type Automation = typeof automations.$inferSelect;
+export type AutomationRun = typeof automationRuns.$inferSelect;
 
 export type AppUser = typeof users.$inferSelect;
 export type Project = typeof projects.$inferSelect;
