@@ -10,6 +10,7 @@ import {
 import { runAgentTurn } from "@/lib/claude/agent";
 import { resolveModel } from "@/lib/claude/models";
 import { isGoogleConnected } from "@/lib/google/client";
+import { effectivePlugins } from "@/lib/plugins";
 import { AUTOMATION_TOOL_NAMES } from "@/lib/tools/google-tools";
 import { BASE_SYSTEM, GOOGLE_TOOLS_NOTE } from "@/lib/claude/system";
 import { truncate } from "@/lib/utils";
@@ -33,7 +34,10 @@ export async function runAutomation(automationId: string): Promise<void> {
   )[0];
   if (!owner || owner.disabled) return;
 
-  const googleEnabled = await isGoogleConnected(owner.id);
+  const plugins = await effectivePlugins(owner.id);
+  const googleEnabled =
+    plugins.google !== false && (await isGoogleConnected(owner.id));
+  const webSearch = plugins.web_search === true;
   const { model } = resolveModel(
     auto.model ?? "claude-sonnet-4-6",
     auto.effort ?? "medium",
@@ -98,6 +102,7 @@ Only process items since the last run to avoid duplicates. Complete the task now
       effort,
       system,
       googleEnabled,
+      webSearch,
       autoApprove: true,
       toolNames: AUTOMATION_TOOL_NAMES,
       usageFeature: "automation",

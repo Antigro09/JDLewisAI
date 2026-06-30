@@ -4,8 +4,15 @@ import { db } from "@/lib/db";
 import { users, usageEvents } from "@/lib/db/schema";
 import { PageShell } from "@/components/page-shell";
 import { Button, Card } from "@/components/ui";
+import { SubmitButton } from "@/components/submit-button";
+import { PLUGINS, getOrgDefaults } from "@/lib/plugins";
 import { formatDate } from "@/lib/utils";
-import { deleteUser, setUserDisabled, setUserRole } from "./actions";
+import {
+  deleteUser,
+  setUserDisabled,
+  setUserRole,
+  saveOrgPluginDefaults,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -24,12 +31,43 @@ export default async function AdminPage() {
     .groupBy(usageEvents.userId);
 
   const usageByUser = new Map(usageRows.map((u) => [u.userId, u]));
+  const orgDefaults = await getOrgDefaults();
 
   return (
     <PageShell
       title="Admin"
       description="Oversee all employee accounts and AI usage."
     >
+      <div className="space-y-6">
+      <Card className="p-6">
+        <h2 className="font-semibold text-neutral-900">Plugin defaults (org-wide)</h2>
+        <p className="mt-1 text-sm text-neutral-500">
+          Default capability state for everyone. Individual users can override in
+          their own settings.
+        </p>
+        <form action={saveOrgPluginDefaults} className="mt-4 space-y-3">
+          {PLUGINS.map((p) => (
+            <label key={p.id} className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                name={`plugin_${p.id}`}
+                defaultChecked={orgDefaults[p.id] ?? p.default}
+                className="mt-1"
+              />
+              <span>
+                <span className="text-sm font-medium text-neutral-800">
+                  {p.label}
+                </span>
+                <span className="block text-xs text-neutral-500">
+                  {p.description}
+                </span>
+              </span>
+            </label>
+          ))}
+          <SubmitButton size="sm">Save defaults</SubmitButton>
+        </form>
+      </Card>
+
       <Card className="overflow-x-auto p-0">
         <table className="w-full text-sm">
           <thead>
@@ -106,6 +144,7 @@ export default async function AdminPage() {
           </tbody>
         </table>
       </Card>
+      </div>
     </PageShell>
   );
 }

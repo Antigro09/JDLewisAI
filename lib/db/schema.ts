@@ -114,6 +114,9 @@ export const conversations = pgTable("conversations", {
   // Set when this conversation is the transcript of an automation run (hidden
   // from the chat sidebar).
   automationId: text("automation_id"),
+  // Explicit skill selection for this conversation; null = use the user's
+  // default-active skills.
+  skillIds: jsonb("skill_ids").$type<string[]>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -255,6 +258,33 @@ export const automationRuns = pgTable("automation_runs", {
 
 export type Automation = typeof automations.$inferSelect;
 export type AutomationRun = typeof automationRuns.$inferSelect;
+
+/** Reusable instruction packs (Phase 4). Personal or org-wide. */
+export const skills = pgTable("skills", {
+  id: id(),
+  ownerId: text("owner_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  scope: text("scope").$type<"personal" | "org">().notNull().default("personal"),
+  name: text("name").notNull(),
+  description: text("description"),
+  instructions: text("instructions").notNull(),
+  // Applied to chats by default (user can still toggle per-conversation).
+  defaultActive: boolean("default_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type Skill = typeof skills.$inferSelect;
+
+/** Per-user / org capability (plugin) toggles (Phase 4). */
+export const pluginSettings = pgTable("plugin_settings", {
+  id: id(),
+  scope: text("scope").$type<"user" | "org">().notNull(),
+  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+  pluginId: text("plugin_id").notNull(),
+  enabled: boolean("enabled").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type PluginSetting = typeof pluginSettings.$inferSelect;
 
 export type AppUser = typeof users.$inferSelect;
 export type Project = typeof projects.$inferSelect;

@@ -2,9 +2,15 @@ import { requireUser } from "@/lib/auth/server";
 import { PageShell } from "@/components/page-shell";
 import { Button, Card, Input, Label, Select, Textarea } from "@/components/ui";
 import { MODELS, ALL_EFFORTS } from "@/lib/claude/models";
+import { SubmitButton } from "@/components/submit-button";
 import { getGoogleAccount } from "@/lib/google/client";
 import { googleConfigured } from "@/lib/google/oauth";
-import { updatePersonalization, disconnectGoogle } from "./actions";
+import { PLUGINS, effectivePlugins } from "@/lib/plugins";
+import {
+  updatePersonalization,
+  disconnectGoogle,
+  savePluginPrefs,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +35,7 @@ export default async function SettingsPage({
   const status = google ? STATUS_MESSAGES[google] : undefined;
   const account = await getGoogleAccount(user.id);
   const configured = googleConfigured();
+  const plugins = await effectivePlugins(user.id);
 
   return (
     <PageShell
@@ -86,6 +93,35 @@ export default async function SettingsPage({
               </p>
             )}
           </div>
+        </Card>
+
+        {/* Plugins */}
+        <Card className="max-w-2xl p-6">
+          <h2 className="font-semibold text-neutral-900">Plugins</h2>
+          <p className="mt-1 text-sm text-neutral-500">
+            Turn capabilities on or off for your chats.
+          </p>
+          <form action={savePluginPrefs} className="mt-4 space-y-3">
+            {PLUGINS.map((p) => (
+              <label key={p.id} className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  name={`plugin_${p.id}`}
+                  defaultChecked={plugins[p.id]}
+                  className="mt-1"
+                />
+                <span>
+                  <span className="text-sm font-medium text-neutral-800">
+                    {p.label}
+                  </span>
+                  <span className="block text-xs text-neutral-500">
+                    {p.description}
+                  </span>
+                </span>
+              </label>
+            ))}
+            <SubmitButton size="sm">Save plugins</SubmitButton>
+          </form>
         </Card>
 
         {/* Personalization */}

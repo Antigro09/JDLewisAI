@@ -11,6 +11,7 @@ import {
 } from "@/lib/db/schema";
 import { MODELS, DEFAULT_MODEL, getModel } from "@/lib/claude/models";
 import { buildSystemPrompt } from "@/lib/claude/system";
+import { resolveActiveSkills, buildSkillsPrompt } from "@/lib/skills";
 import type { ModelOption } from "@/components/chat/chat-client";
 
 export function modelOptions(): ModelOption[] {
@@ -124,11 +125,16 @@ export async function getConversationForUser(userId: string, id: string) {
 /** Build the system prompt for a conversation (personalization + project + Google). */
 export async function buildChatSystem(
   user: AppUser,
-  conv: Pick<Conversation, "projectId">,
+  conv: Pick<Conversation, "projectId" | "skillIds">,
   googleEnabled: boolean,
 ): Promise<string> {
   let projectName: string | null = null;
   let projectInstructions: string | null = null;
+
+  const activeSkills = await resolveActiveSkills(user, conv.skillIds ?? null);
+  const skillsPrompt = buildSkillsPrompt(
+    activeSkills.map((s) => ({ name: s.name, instructions: s.instructions })),
+  );
 
   if (conv.projectId) {
     const proj = (
@@ -167,5 +173,6 @@ export async function buildChatSystem(
     projectName,
     projectInstructions,
     googleEnabled,
+    skillsPrompt,
   });
 }
