@@ -15,7 +15,7 @@ export async function GET(req: Request) {
   const error = url.searchParams.get("error");
 
   const settings = (status: string) =>
-    NextResponse.redirect(new URL(`/settings?google=${status}`, req.url));
+    NextResponse.redirect(new URL(`/customize?tab=connections&google=${status}`, req.url));
 
   if (error) return settings("denied");
   if (!code || !state) return settings("error");

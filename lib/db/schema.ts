@@ -5,6 +5,7 @@ import {
   integer,
   jsonb,
   boolean,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 export type Role = "ADMIN" | "MEMBER";
@@ -17,6 +18,8 @@ export type Personalization = {
   about?: string; // free-form context about the user / their work
   defaultModel?: string;
   defaultEffort?: string;
+  darkMode?: "light" | "dark" | "system";
+  emailNotifications?: boolean;
 };
 
 /** A single chat message stored as structured content blocks. */
@@ -107,6 +110,7 @@ export const conversations = pgTable("conversations", {
     onDelete: "set null",
   }),
   title: text("title").notNull().default("New chat"),
+  pinned: boolean("pinned").notNull().default(false),
   model: text("model").notNull(),
   effort: text("effort").notNull().default("high"),
   // Tool calls paused awaiting user confirmation (write/send actions).
@@ -117,6 +121,12 @@ export const conversations = pgTable("conversations", {
   // Explicit skill selection for this conversation; null = use the user's
   // default-active skills.
   skillIds: jsonb("skill_ids").$type<string[]>(),
+  // Tip of the currently-active branch (walk `messages.parentId` from here to
+  // the root to get the rendered thread). Null = unbranched / empty.
+  activeLeafId: text("active_leaf_id").references(
+    (): AnyPgColumn => messages.id,
+    { onDelete: "set null" },
+  ),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -126,6 +136,11 @@ export const messages = pgTable("messages", {
   conversationId: text("conversation_id")
     .notNull()
     .references(() => conversations.id, { onDelete: "cascade" }),
+  // Self-reference for branching: null = root message. Editing a message
+  // creates a new sibling (same parentId); deleting cascades its subtree.
+  parentId: text("parent_id").references((): AnyPgColumn => messages.id, {
+    onDelete: "cascade",
+  }),
   role: text("role").$type<"user" | "assistant">().notNull(),
   blocks: jsonb("blocks").$type<MessageBlock[]>().notNull(),
   // Verbatim Anthropic API content for assistant turns (preserves thinking
@@ -275,6 +290,20 @@ export const skills = pgTable("skills", {
 });
 export type Skill = typeof skills.$inferSelect;
 
+/** Files attached to a skill: the parsed SKILL.md itself + reference docs. */
+export const skillFiles = pgTable("skill_files", {
+  id: id(),
+  skillId: text("skill_id")
+    .notNull()
+    .references(() => skills.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  mime: text("mime").notNull(),
+  data: text("data").notNull(), // base64-encoded content (MVP storage)
+  kind: text("kind").$type<"primary" | "reference">().notNull().default("reference"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type SkillFile = typeof skillFiles.$inferSelect;
+
 /** Per-user / org capability (plugin) toggles (Phase 4). */
 export const pluginSettings = pgTable("plugin_settings", {
   id: id(),
@@ -409,6 +438,47 @@ export const bids = pgTable("bids", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 export type Bid = typeof bids.$inferSelect;
+
+export type NotificationKind = "approval_needed" | "task_complete" | "error";
+
+/** In-app notifications for background work the user might need to act on. */
+export const notifications = pgTable("notifications", {
+  id: id(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  kind: text("kind").$type<NotificationKind>().notNull(),
+  title: text("title").notNull(),
+  body: text("body"),
+  link: text("link"),
+  read: boolean("read").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type Notification = typeof notifications.$inferSelect;
+
+export type DocumentTemplateKind =
+  | "rfi"
+  | "change_order"
+  | "daily_report"
+  | "eap"
+  | "proposal"
+  | "scope_of_work"
+  | "general";
+
+/** Org-wide document branding (logo, header/footer, color) applied when
+ * viewing/printing generated documents. v1 only ever has one row (kind
+ * "general"); the column is kept for future per-document-type overrides. */
+export const documentTemplates = pgTable("document_templates", {
+  id: id(),
+  kind: text("kind").$type<DocumentTemplateKind>().notNull().default("general"),
+  name: text("name").notNull(),
+  logo: text("logo"), // data: URI (e.g. "data:image/png;base64,...."), nullable
+  headerText: text("header_text"),
+  footerText: text("footer_text"),
+  brandColor: text("brand_color"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type DocumentTemplate = typeof documentTemplates.$inferSelect;
 
 export type AppUser = typeof users.$inferSelect;
 export type Project = typeof projects.$inferSelect;

@@ -1,16 +1,11 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth/server";
-import { ConversationsPanel } from "@/components/chat/conversations-panel";
 import { ChatClient } from "@/components/chat/chat-client";
 import { getGoogleTool } from "@/lib/tools/google-tools";
 import { isGoogleConnected } from "@/lib/google/client";
 import { listAvailableSkills, defaultActiveSkillIds } from "@/lib/skills";
-import {
-  getConversationForUser,
-  listConversations,
-  listProjects,
-  modelOptions,
-} from "@/lib/data";
+import { effectivePlugins } from "@/lib/plugins";
+import { getConversationForUser, listProjects, modelOptions } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
@@ -24,13 +19,13 @@ export default async function ConversationPage({
   const data = await getConversationForUser(user.id, id);
   if (!data) notFound();
 
-  const [convs, projects, googleConnected, skills, defaultSkillIds] =
+  const [projects, googleConnected, skills, defaultSkillIds, plugins] =
     await Promise.all([
-      listConversations(user.id),
       listProjects(user.id),
       isGoogleConnected(user.id),
       listAvailableSkills(user),
       defaultActiveSkillIds(user),
+      effectivePlugins(user.id),
     ]);
   const activeSkillIds = data.conv.skillIds ?? defaultSkillIds;
 
@@ -45,28 +40,24 @@ export default async function ConversationPage({
   }));
 
   return (
-    <div className="flex h-full">
-      <ConversationsPanel items={convs} />
-      <div className="flex-1">
-        <ChatClient
-          conversationId={data.conv.id}
-          initialMessages={data.messages}
-          models={modelOptions()}
-          initialModel={data.conv.model}
-          initialEffort={data.conv.effort}
-          projects={projects}
-          initialProjectId={data.conv.projectId}
-          lockProject={true}
-          initialPending={initialPending}
-          googleConnected={googleConnected}
-          availableSkills={skills.map((s) => ({
-            id: s.id,
-            name: s.name,
-            scope: s.scope,
-          }))}
-          initialActiveSkillIds={activeSkillIds}
-        />
-      </div>
-    </div>
+    <ChatClient
+      conversationId={data.conv.id}
+      initialMessages={data.messages}
+      models={modelOptions()}
+      initialModel={data.conv.model}
+      initialEffort={data.conv.effort}
+      projects={projects}
+      initialProjectId={data.conv.projectId}
+      lockProject={true}
+      initialPending={initialPending}
+      googleConnected={googleConnected}
+      availableSkills={skills.map((s) => ({
+        id: s.id,
+        name: s.name,
+        scope: s.scope,
+      }))}
+      initialActiveSkillIds={activeSkillIds}
+      initialWebSearch={plugins.web_search === true}
+    />
   );
 }

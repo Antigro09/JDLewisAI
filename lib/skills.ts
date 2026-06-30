@@ -1,6 +1,6 @@
-import { desc, eq, or } from "drizzle-orm";
+import { asc, desc, eq, or } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { skills, type Skill, type AppUser } from "@/lib/db/schema";
+import { skills, skillFiles, type Skill, type AppUser } from "@/lib/db/schema";
 
 /** Skills a user can see: their personal skills + all org-wide skills. */
 export async function listAvailableSkills(user: AppUser): Promise<Skill[]> {
@@ -25,6 +25,24 @@ export async function resolveActiveSkills(
   const ids = skillIds ?? available.filter((s) => s.defaultActive).map((s) => s.id);
   const set = new Set(ids);
   return available.filter((s) => set.has(s.id));
+}
+
+export async function listSkillFiles(skillId: string) {
+  return db
+    .select({
+      id: skillFiles.id,
+      name: skillFiles.name,
+      mime: skillFiles.mime,
+      kind: skillFiles.kind,
+      createdAt: skillFiles.createdAt,
+    })
+    .from(skillFiles)
+    .where(eq(skillFiles.skillId, skillId))
+    .orderBy(asc(skillFiles.createdAt));
+}
+
+export async function getSkillFile(id: string) {
+  return (await db.select().from(skillFiles).where(eq(skillFiles.id, id)))[0];
 }
 
 export function buildSkillsPrompt(

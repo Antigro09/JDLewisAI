@@ -7,6 +7,7 @@ import { runAgentTurn, applyPendingDecisions } from "@/lib/claude/agent";
 import { isGoogleConnected } from "@/lib/google/client";
 import { effectivePlugins } from "@/lib/plugins";
 import { buildChatSystem } from "@/lib/data";
+import { createNotification, maybeSendEmailNotification } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,6 +88,18 @@ export async function POST(req: Request) {
           webSearch,
         })) {
           send(ev);
+          if (ev.type === "tool_request") {
+            const title = "Action needs your approval";
+            const body = `${conv.title}: ${ev.pending.map((p) => p.summary).join("; ")}`;
+            await createNotification({
+              userId: user.id,
+              kind: "approval_needed",
+              title,
+              body,
+              link: `/chat/${conversationId}`,
+            });
+            await maybeSendEmailNotification({ userId: user.id, title, body });
+          }
         }
       } catch (err) {
         send({

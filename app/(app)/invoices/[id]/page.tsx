@@ -20,7 +20,7 @@ function Field({ label, value }: { label: string; value?: string | number }) {
       <div className="text-xs uppercase tracking-wide text-neutral-400">
         {label}
       </div>
-      <div className="text-sm text-neutral-800">{String(value)}</div>
+      <div className="text-sm text-neutral-800 dark:text-neutral-200">{String(value)}</div>
     </div>
   );
 }
@@ -73,7 +73,7 @@ export default async function InvoiceDetailPage({
               <iframe
                 src={dataUrl}
                 title={inv.fileName}
-                className="h-[600px] w-full rounded border border-neutral-200"
+                className="h-[600px] w-full rounded border border-neutral-200 dark:border-neutral-800"
               />
             </div>
           )}
@@ -109,19 +109,19 @@ export default async function InvoiceDetailPage({
                 <table className="w-full border-collapse text-sm">
                   <thead>
                     <tr className="text-left text-xs uppercase text-neutral-400">
-                      <th className="border-b py-1 pr-2">Description</th>
-                      <th className="border-b py-1 pr-2">Qty</th>
-                      <th className="border-b py-1 pr-2">Unit</th>
-                      <th className="border-b py-1">Amount</th>
+                      <th className="border-b py-1 pr-2 dark:border-neutral-800">Description</th>
+                      <th className="border-b py-1 pr-2 dark:border-neutral-800">Qty</th>
+                      <th className="border-b py-1 pr-2 dark:border-neutral-800">Unit</th>
+                      <th className="border-b py-1 dark:border-neutral-800">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
                     {ex.lineItems.map((li, i) => (
-                      <tr key={i} className="text-neutral-700">
-                        <td className="border-b py-1 pr-2">{li.description}</td>
-                        <td className="border-b py-1 pr-2">{li.quantity ?? ""}</td>
-                        <td className="border-b py-1 pr-2">{li.unitPrice ?? ""}</td>
-                        <td className="border-b py-1">{li.amount ?? ""}</td>
+                      <tr key={i} className="text-neutral-700 dark:text-neutral-300">
+                        <td className="border-b py-1 pr-2 dark:border-neutral-800">{li.description}</td>
+                        <td className="border-b py-1 pr-2 dark:border-neutral-800">{li.quantity ?? ""}</td>
+                        <td className="border-b py-1 pr-2 dark:border-neutral-800">{li.unitPrice ?? ""}</td>
+                        <td className="border-b py-1 dark:border-neutral-800">{li.amount ?? ""}</td>
                       </tr>
                     ))}
                   </tbody>

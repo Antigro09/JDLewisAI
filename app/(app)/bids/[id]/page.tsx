@@ -38,7 +38,7 @@ export default async function BidDetailPage({
           <h3 className="mb-3 font-semibold">Vendor Quotes</h3>
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-400">
+              <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-400 dark:border-neutral-800">
                 <th className="pb-2 pr-4">Vendor</th>
                 <th className="pb-2 pr-4">Total Amount</th>
                 <th className="pb-2">Notes</th>
@@ -46,10 +46,10 @@ export default async function BidDetailPage({
             </thead>
             <tbody>
               {vendors.map((v, i) => (
-                <tr key={i} className="border-b border-neutral-100">
-                  <td className="py-2 pr-4 font-medium">{v.name}</td>
-                  <td className="py-2 pr-4">${v.totalAmt}</td>
-                  <td className="py-2 text-neutral-500">{v.notes ?? "—"}</td>
+                <tr key={i} className="border-b border-neutral-100 dark:border-neutral-800">
+                  <td className="py-2 pr-4 font-medium dark:text-neutral-100">{v.name}</td>
+                  <td className="py-2 pr-4 dark:text-neutral-200">${v.totalAmt}</td>
+                  <td className="py-2 text-neutral-500 dark:text-neutral-400">{v.notes ?? "—"}</td>
                 </tr>
               ))}
             </tbody>

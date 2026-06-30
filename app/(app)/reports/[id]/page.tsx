@@ -26,9 +26,16 @@ export default async function DailyReportDetailPage({
       title={`Daily Report — ${report.reportDate}`}
       description={`Generated ${formatDate(report.createdAt)}`}
       action={
-        <Link href="/reports">
-          <Button variant="secondary" size="sm">All Reports</Button>
-        </Link>
+        <div className="flex items-center gap-3">
+          {report.generatedReport && (
+            <Link href={`/print/daily-report/${report.id}`}>
+              <Button variant="secondary" size="sm">View branded</Button>
+            </Link>
+          )}
+          <Link href="/reports">
+            <Button variant="secondary" size="sm">All Reports</Button>
+          </Link>
+        </div>
       }
     >
       <div className="grid gap-6 lg:grid-cols-2">

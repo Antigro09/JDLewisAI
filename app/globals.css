@@ -12,7 +12,7 @@ body {
 }
 
 body {
-  @apply bg-neutral-50 text-neutral-900 antialiased;
+  @apply antialiased;
 }
 
 /* Thin, modern scrollbars */
@@ -59,6 +59,16 @@ body {
 .prose-chat th,
 .prose-chat td {
   @apply border border-neutral-300 px-2 py-1 text-left;
+}
+.dark .prose-chat code {
+  @apply bg-neutral-700 text-neutral-100;
+}
+.dark .prose-chat th,
+.dark .prose-chat td {
+  @apply border-neutral-700;
+}
+.dark .prose-chat pre {
+  @apply bg-neutral-900;
 }
 
 /* Minimal syntax highlighting (rehype-highlight) */
