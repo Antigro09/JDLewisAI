@@ -112,9 +112,31 @@ email**.
 Run `npm run db:push` after pulling Phase 3 — it adds the new `automations` columns, the
 `automation_runs` table, and `conversations.automation_id`.
 
-## Roadmap (later phases)
-- ~~**Phase 3 — Automations/routines**~~ — done (see Automations above).
-- **Phase 4 — Plugins & skills:** user/admin-managed skill packages and tool bundles.
+## Skills & plugins (Phase 4)
+
+**Skills** are reusable instruction packs (name, description, instructions) the AI follows — e.g.
+"Company RFI format" or "Bid email style." Manage them under **Skills** in the sidebar:
+
+- Personal skills (yours) and **org-wide** skills (admins publish to everyone).
+- "Active by default" skills apply to every chat; a **Skills** picker in the chat header lets you
+  toggle which skills apply to a given conversation.
+
+**Plugins** are capability toggles (Settings → Plugins for your own; Admin → Plugin defaults for
+org-wide defaults):
+
+- **Google Workspace** — Drive/Docs/Sheets/Gmail tools in chat (needs Google connected).
+- **Web Search** — lets the AI search the web for current info (Anthropic's server-side web
+  search; off by default, small per-search cost). Resolution is user override → org default →
+  built-in default. Automations honor the owner's plugin settings too.
+
+Run `npm run db:push` after pulling Phase 4 — it adds the `skills` and `plugin_settings` tables
+and `conversations.skill_ids`.
+
+## Roadmap
+
+- ~~**Phase 2 — Google**~~ · ~~**Phase 3 — Automations**~~ · ~~**Phase 4 — Skills & plugins**~~ — all done.
+- Possible next: RFI/submittal/change-order generators, bid comparison, project-knowledge RAG,
+  a richer admin cost dashboard, mobile field capture.
 
 ## Project layout
 

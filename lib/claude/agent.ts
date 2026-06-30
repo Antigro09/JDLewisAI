@@ -119,6 +119,8 @@ export type RunAgentOptions = {
   toolNames?: string[];
   /** Usage-metering feature label (default "chat"). */
   usageFeature?: string;
+  /** Enable the Anthropic web search server tool. */
+  webSearch?: boolean;
 };
 
 /**
@@ -147,9 +149,18 @@ export async function* runAgentTurn(
     }
   }
 
-  let tools = opts.googleEnabled ? googleToolDefinitions() : undefined;
-  if (tools && opts.toolNames) {
-    tools = tools.filter((d) => opts.toolNames!.includes(d.name));
+  const tools: unknown[] = [];
+  if (opts.googleEnabled) {
+    let g = googleToolDefinitions();
+    if (opts.toolNames) g = g.filter((d) => opts.toolNames!.includes(d.name));
+    tools.push(...g);
+  }
+  if (opts.webSearch) {
+    // Dynamic-filtering variant on Opus/Sonnet 4.6+, basic on Haiku.
+    const wsType = model.id.includes("haiku")
+      ? "web_search_20250305"
+      : "web_search_20260209";
+    tools.push({ type: wsType, name: "web_search" });
   }
   let inTok = 0;
   let outTok = 0;
@@ -172,7 +183,7 @@ export async function* runAgentTurn(
         system: opts.system,
         messages: apiMessages,
       };
-      if (tools) params.tools = tools;
+      if (tools.length) params.tools = tools;
       if (model.adaptiveThinking)
         params.thinking = { type: "adaptive", display: "summarized" };
       if (effort) params.output_config = { effort };
@@ -218,6 +229,8 @@ export async function* runAgentTurn(
       });
 
       const toolUses = content.filter((c) => c.type === "tool_use");
+      // Server tools (e.g. web search) hit their iteration limit — re-send to continue.
+      if (final.stop_reason === "pause_turn") continue;
       if (final.stop_reason !== "tool_use" || toolUses.length === 0) {
         break;
       }

@@ -12,6 +12,7 @@ import {
   Wrench,
   ExternalLink,
   AlertTriangle,
+  Sparkles,
 } from "lucide-react";
 import { Markdown } from "@/components/markdown";
 import { Button, Card, Select, Spinner } from "@/components/ui";
@@ -119,6 +120,8 @@ export function ChatClient({
   lockProject,
   initialPending = [],
   googleConnected,
+  availableSkills = [],
+  initialActiveSkillIds = [],
 }: {
   conversationId: string | null;
   initialMessages: ChatMsg[];
@@ -130,6 +133,8 @@ export function ChatClient({
   lockProject: boolean;
   initialPending?: PendingTool[];
   googleConnected: boolean;
+  availableSkills?: { id: string; name: string; scope: string }[];
+  initialActiveSkillIds?: string[];
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMsg[]>(initialMessages);
@@ -140,6 +145,8 @@ export function ChatClient({
   const [projectId, setProjectId] = useState<string | null>(initialProjectId);
   const [sending, setSending] = useState(false);
   const [pending, setPending] = useState<PendingTool[]>(initialPending);
+  const [skillIds, setSkillIds] = useState<string[]>(initialActiveSkillIds);
+  const [skillsOpen, setSkillsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const convIdRef = useRef<string | null>(conversationId);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -275,6 +282,7 @@ export function ChatClient({
           effort,
           message: text,
           attachments: sentAttachments,
+          skillIds,
         }),
       });
       await consumeResponse(res);
@@ -366,6 +374,47 @@ export function ChatClient({
             ))}
           </Select>
         </div>
+        {availableSkills.length > 0 && (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setSkillsOpen((o) => !o)}
+              className="flex items-center gap-1.5 rounded-lg border border-neutral-300 px-2 py-1.5 text-xs text-neutral-600 hover:bg-neutral-100"
+            >
+              <Sparkles size={14} />
+              Skills{skillIds.length ? ` (${skillIds.length})` : ""}
+            </button>
+            {skillsOpen && (
+              <div className="absolute z-10 mt-1 max-h-72 w-64 overflow-y-auto rounded-lg border border-neutral-200 bg-white p-2 shadow-lg">
+                {availableSkills.map((s) => (
+                  <label
+                    key={s.id}
+                    className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-neutral-50"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={skillIds.includes(s.id)}
+                      onChange={(e) =>
+                        setSkillIds((prev) =>
+                          e.target.checked
+                            ? [...prev, s.id]
+                            : prev.filter((x) => x !== s.id),
+                        )
+                      }
+                    />
+                    <span className="flex-1 truncate">{s.name}</span>
+                    {s.scope === "org" && (
+                      <span className="text-[10px] text-blue-600">org</span>
+                    )}
+                  </label>
+                ))}
+                <p className="px-2 pt-1 text-[11px] text-neutral-400">
+                  Applied to this conversation.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
         {!googleConnected && (
           <a
             href="/settings"

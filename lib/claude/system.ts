@@ -35,10 +35,12 @@ export function buildSystemPrompt(opts: {
   projectName?: string | null;
   projectInstructions?: string | null;
   googleEnabled?: boolean;
+  skillsPrompt?: string;
 }): string {
   const parts = [BASE_SYSTEM];
 
   if (opts.googleEnabled) parts.push(GOOGLE_TOOLS_NOTE);
+  if (opts.skillsPrompt) parts.push(opts.skillsPrompt);
 
   if (opts.personalization) {
     const p = opts.personalization;

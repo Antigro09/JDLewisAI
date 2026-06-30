@@ -10,6 +10,7 @@ import {
   Map,
   ShieldAlert,
   Workflow,
+  Sparkles,
   Settings,
   Users,
   LogOut,
@@ -25,6 +26,7 @@ const NAV = [
   { href: "/plans", label: "Plan Reader", icon: Map },
   { href: "/eap", label: "Emergency Plan", icon: ShieldAlert },
   { href: "/automations", label: "Automations", icon: Workflow },
+  { href: "/skills", label: "Skills", icon: Sparkles },
 ];
 
 export function Sidebar({

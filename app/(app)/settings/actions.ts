@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, googleAccounts, type Personalization } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/server";
+import { PLUGINS, setUserPlugin } from "@/lib/plugins";
 
 export async function updatePersonalization(formData: FormData) {
   const user = await requireUser();
@@ -25,5 +26,13 @@ export async function updatePersonalization(formData: FormData) {
 export async function disconnectGoogle() {
   const user = await requireUser();
   await db.delete(googleAccounts).where(eq(googleAccounts.userId, user.id));
+  revalidatePath("/settings");
+}
+
+export async function savePluginPrefs(formData: FormData) {
+  const user = await requireUser();
+  for (const p of PLUGINS) {
+    await setUserPlugin(user.id, p.id, formData.get(`plugin_${p.id}`) === "on");
+  }
   revalidatePath("/settings");
 }

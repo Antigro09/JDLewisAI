@@ -5,6 +5,7 @@ import { conversations } from "@/lib/db/schema";
 import { getCurrentUser } from "@/lib/auth/server";
 import { runAgentTurn, applyPendingDecisions } from "@/lib/claude/agent";
 import { isGoogleConnected } from "@/lib/google/client";
+import { effectivePlugins } from "@/lib/plugins";
 import { buildChatSystem } from "@/lib/data";
 
 export const runtime = "nodejs";
@@ -51,10 +52,13 @@ export async function POST(req: Request) {
   }
 
   const decisions = body.decisions ?? {};
-  const googleEnabled = await isGoogleConnected(user.id);
+  const plugins = await effectivePlugins(user.id);
+  const googleEnabled =
+    plugins.google !== false && (await isGoogleConnected(user.id));
+  const webSearch = plugins.web_search === true;
   const system = await buildChatSystem(
     user,
-    { projectId: conv.projectId },
+    { projectId: conv.projectId, skillIds: conv.skillIds },
     googleEnabled,
   );
 
@@ -80,6 +84,7 @@ export async function POST(req: Request) {
           effort: conv.effort,
           system,
           googleEnabled,
+          webSearch,
         })) {
           send(ev);
         }

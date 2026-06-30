@@ -4,6 +4,7 @@ import { ConversationsPanel } from "@/components/chat/conversations-panel";
 import { ChatClient } from "@/components/chat/chat-client";
 import { getGoogleTool } from "@/lib/tools/google-tools";
 import { isGoogleConnected } from "@/lib/google/client";
+import { listAvailableSkills, defaultActiveSkillIds } from "@/lib/skills";
 import {
   getConversationForUser,
   listConversations,
@@ -23,11 +24,15 @@ export default async function ConversationPage({
   const data = await getConversationForUser(user.id, id);
   if (!data) notFound();
 
-  const [convs, projects, googleConnected] = await Promise.all([
-    listConversations(user.id),
-    listProjects(user.id),
-    isGoogleConnected(user.id),
-  ]);
+  const [convs, projects, googleConnected, skills, defaultSkillIds] =
+    await Promise.all([
+      listConversations(user.id),
+      listProjects(user.id),
+      isGoogleConnected(user.id),
+      listAvailableSkills(user),
+      defaultActiveSkillIds(user),
+    ]);
+  const activeSkillIds = data.conv.skillIds ?? defaultSkillIds;
 
   const initialPending = (data.conv.pendingToolUses ?? []).map((p) => ({
     id: p.id,
@@ -54,6 +59,12 @@ export default async function ConversationPage({
           lockProject={true}
           initialPending={initialPending}
           googleConnected={googleConnected}
+          availableSkills={skills.map((s) => ({
+            id: s.id,
+            name: s.name,
+            scope: s.scope,
+          }))}
+          initialActiveSkillIds={activeSkillIds}
         />
       </div>
     </div>

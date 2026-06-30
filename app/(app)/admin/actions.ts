@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, type Role } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/server";
+import { PLUGINS, setOrgPlugin } from "@/lib/plugins";
 
 export async function setUserRole(userId: string, role: Role) {
   const admin = await requireAdmin();
@@ -24,5 +25,13 @@ export async function deleteUser(userId: string) {
   const admin = await requireAdmin();
   if (admin.id === userId) return; // can't delete yourself
   await db.delete(users).where(eq(users.id, userId));
+  revalidatePath("/admin");
+}
+
+export async function saveOrgPluginDefaults(formData: FormData) {
+  await requireAdmin();
+  for (const p of PLUGINS) {
+    await setOrgPlugin(p.id, formData.get(`plugin_${p.id}`) === "on");
+  }
   revalidatePath("/admin");
 }

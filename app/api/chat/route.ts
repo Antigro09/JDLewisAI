@@ -7,6 +7,7 @@ import { runAgentTurn, applyPendingDecisions } from "@/lib/claude/agent";
 import type { Attachment } from "@/lib/claude/types";
 import { resolveModel } from "@/lib/claude/models";
 import { isGoogleConnected } from "@/lib/google/client";
+import { effectivePlugins } from "@/lib/plugins";
 import { buildChatSystem } from "@/lib/data";
 import { truncate } from "@/lib/utils";
 
@@ -23,6 +24,7 @@ type Body = {
   effort?: string;
   message?: string;
   attachments?: Attachment[];
+  skillIds?: string[];
 };
 
 export async function POST(req: Request) {
@@ -123,10 +125,24 @@ export async function POST(req: Request) {
     blocks: userBlocks,
   });
 
-  const googleEnabled = await isGoogleConnected(user.id);
+  if (Array.isArray(body.skillIds)) {
+    await db
+      .update(conversations)
+      .set({ skillIds: body.skillIds })
+      .where(eq(conversations.id, convId));
+  }
+  const activeSkillIds = Array.isArray(body.skillIds)
+    ? body.skillIds
+    : (conv?.skillIds ?? null);
+
+  const plugins = await effectivePlugins(user.id);
+  const googleEnabled =
+    plugins.google !== false && (await isGoogleConnected(user.id));
+  const webSearch = plugins.web_search === true;
+
   const system = await buildChatSystem(
     user,
-    { projectId: conv?.projectId ?? null },
+    { projectId: conv?.projectId ?? null, skillIds: activeSkillIds },
     googleEnabled,
   );
 
@@ -147,6 +163,7 @@ export async function POST(req: Request) {
           effort,
           system,
           googleEnabled,
+          webSearch,
           liveAttachments: attachments,
           liveText: message,
         })) {
