@@ -2,9 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Paperclip, Send, X, Brain, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  Paperclip,
+  Send,
+  X,
+  Brain,
+  ChevronDown,
+  ChevronRight,
+  Wrench,
+  ExternalLink,
+  AlertTriangle,
+} from "lucide-react";
 import { Markdown } from "@/components/markdown";
-import { Button, Select, Spinner } from "@/components/ui";
+import { Button, Card, Select, Spinner } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
 export type ModelOption = {
@@ -16,23 +26,29 @@ export type ModelOption = {
   adaptiveThinking: boolean;
 };
 
+export type PendingTool = {
+  id: string;
+  name: string;
+  kind: "read" | "write";
+  summary: string;
+};
+
 type Attachment = { name: string; mime: string; dataBase64: string };
+type Activity = { tool: string; summary: string; link?: string; isError?: boolean };
 
 type ChatMsg = {
   role: "user" | "assistant";
   text: string;
   thinking?: string;
   attachments?: { name: string; mime: string }[];
+  activities?: Activity[];
   streaming?: boolean;
 };
 
 function readFileAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result);
-      resolve(result.split(",")[1] ?? "");
-    };
+    reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
@@ -60,6 +76,38 @@ function ThinkingBlock({ text }: { text: string }) {
   );
 }
 
+function ActivityList({ activities }: { activities?: Activity[] }) {
+  if (!activities || activities.length === 0) return null;
+  return (
+    <div className="mb-2 space-y-1">
+      {activities.map((a, i) => (
+        <div
+          key={i}
+          className={cn(
+            "flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs",
+            a.isError
+              ? "border-red-200 bg-red-50 text-red-700"
+              : "border-neutral-200 bg-neutral-50 text-neutral-600",
+          )}
+        >
+          {a.isError ? <AlertTriangle size={13} /> : <Wrench size={13} />}
+          <span className="flex-1">{a.summary}</span>
+          {a.link && (
+            <a
+              href={a.link}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline"
+            >
+              Open <ExternalLink size={12} />
+            </a>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function ChatClient({
   conversationId,
   initialMessages,
@@ -69,6 +117,8 @@ export function ChatClient({
   projects,
   initialProjectId,
   lockProject,
+  initialPending = [],
+  googleConnected,
 }: {
   conversationId: string | null;
   initialMessages: ChatMsg[];
@@ -78,6 +128,8 @@ export function ChatClient({
   projects: { id: string; name: string }[];
   initialProjectId: string | null;
   lockProject: boolean;
+  initialPending?: PendingTool[];
+  googleConnected: boolean;
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMsg[]>(initialMessages);
@@ -87,6 +139,7 @@ export function ChatClient({
   const [effort, setEffort] = useState(initialEffort);
   const [projectId, setProjectId] = useState<string | null>(initialProjectId);
   const [sending, setSending] = useState(false);
+  const [pending, setPending] = useState<PendingTool[]>(initialPending);
   const [error, setError] = useState<string | null>(null);
   const convIdRef = useRef<string | null>(conversationId);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -97,14 +150,12 @@ export function ChatClient({
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages]);
+  }, [messages, pending]);
 
   function onModelChange(id: string) {
     setModel(id);
     const m = models.find((x) => x.id === id);
-    if (m && m.efforts.length > 0 && !m.efforts.includes(effort)) {
-      setEffort("high");
-    }
+    if (m && m.efforts.length > 0 && !m.efforts.includes(effort)) setEffort("high");
   }
 
   async function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
@@ -118,10 +169,85 @@ export function ChatClient({
     if (fileRef.current) fileRef.current.value = "";
   }
 
+  function setLast(fn: (m: ChatMsg) => ChatMsg) {
+    setMessages((prev) => {
+      if (prev.length === 0) return prev;
+      const copy = [...prev];
+      copy[copy.length - 1] = fn(copy[copy.length - 1]);
+      return copy;
+    });
+  }
+
+  async function consumeResponse(res: Response) {
+    if (!res.ok || !res.body) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error || `Request failed (${res.status})`);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let newId: string | null = null;
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let ev: Record<string, unknown>;
+        try {
+          ev = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        switch (ev.type) {
+          case "meta":
+            if (!convIdRef.current && typeof ev.conversationId === "string") {
+              convIdRef.current = ev.conversationId;
+              newId = ev.conversationId;
+            }
+            break;
+          case "text":
+            setLast((m) => ({ ...m, text: m.text + String(ev.text) }));
+            break;
+          case "thinking":
+            setLast((m) => ({ ...m, thinking: (m.thinking ?? "") + String(ev.text) }));
+            break;
+          case "tool_activity":
+            setLast((m) => ({
+              ...m,
+              activities: [
+                ...(m.activities ?? []),
+                {
+                  tool: String(ev.tool),
+                  summary: String(ev.summary),
+                  link: ev.link as string | undefined,
+                  isError: Boolean(ev.isError),
+                },
+              ],
+            }));
+            break;
+          case "tool_request":
+            setPending((ev.pending as PendingTool[]) ?? []);
+            break;
+          case "error":
+            setError(String(ev.message));
+            break;
+        }
+      }
+    }
+    setLast((m) => ({ ...m, streaming: false }));
+    if (newId) window.history.replaceState({}, "", `/chat/${newId}`);
+  }
+
   async function send() {
     const text = input.trim();
     if ((!text && attachments.length === 0) || sending) return;
     setError(null);
+    setPending([]);
     setSending(true);
 
     const userMsg: ChatMsg = {
@@ -129,8 +255,11 @@ export function ChatClient({
       text,
       attachments: attachments.map((a) => ({ name: a.name, mime: a.mime })),
     };
-    const assistantMsg: ChatMsg = { role: "assistant", text: "", thinking: "", streaming: true };
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
+    setMessages((prev) => [
+      ...prev,
+      userMsg,
+      { role: "assistant", text: "", thinking: "", activities: [], streaming: true },
+    ]);
     const sentAttachments = attachments;
     setInput("");
     setAttachments([]);
@@ -148,64 +277,41 @@ export function ChatClient({
           attachments: sentAttachments,
         }),
       });
-      if (!res.ok || !res.body) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j.error || `Request failed (${res.status})`);
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let newId: string | null = null;
-
-      const update = (fn: (m: ChatMsg) => ChatMsg) =>
-        setMessages((prev) => {
-          const copy = [...prev];
-          copy[copy.length - 1] = fn(copy[copy.length - 1]);
-          return copy;
-        });
-
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          let ev: Record<string, unknown>;
-          try {
-            ev = JSON.parse(line);
-          } catch {
-            continue;
-          }
-          if (ev.type === "meta") {
-            if (!convIdRef.current && typeof ev.conversationId === "string") {
-              convIdRef.current = ev.conversationId;
-              newId = ev.conversationId;
-            }
-          } else if (ev.type === "text") {
-            update((m) => ({ ...m, text: m.text + String(ev.text) }));
-          } else if (ev.type === "thinking") {
-            update((m) => ({ ...m, thinking: (m.thinking ?? "") + String(ev.text) }));
-          } else if (ev.type === "error") {
-            setError(String(ev.message));
-          }
-        }
-      }
-
-      update((m) => ({ ...m, streaming: false }));
-      setSending(false);
-
-      if (newId) {
-        window.history.replaceState({}, "", `/chat/${newId}`);
-      }
-      router.refresh();
+      await consumeResponse(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send");
-      update_streamingOff(setMessages);
+      setLast((m) => ({ ...m, streaming: false }));
+    } finally {
       setSending(false);
+      router.refresh();
+    }
+  }
+
+  async function confirmPending(approve: boolean) {
+    if (!convIdRef.current || pending.length === 0 || sending) return;
+    setSending(true);
+    setError(null);
+    const decisions: Record<string, "approve" | "reject"> = {};
+    for (const p of pending)
+      if (p.kind === "write") decisions[p.id] = approve ? "approve" : "reject";
+    setPending([]);
+    setMessages((prev) => [
+      ...prev,
+      { role: "assistant", text: "", thinking: "", activities: [], streaming: true },
+    ]);
+    try {
+      const res = await fetch("/api/chat/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: convIdRef.current, decisions }),
+      });
+      await consumeResponse(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to confirm");
+      setLast((m) => ({ ...m, streaming: false }));
+    } finally {
+      setSending(false);
+      router.refresh();
     }
   }
 
@@ -216,9 +322,11 @@ export function ChatClient({
     }
   }
 
+  const writes = pending.filter((p) => p.kind === "write");
+
   return (
     <div className="flex h-full flex-col">
-      {/* Header: model + effort + project */}
+      {/* Header */}
       <div className="flex flex-wrap items-center gap-3 border-b border-neutral-200 bg-white px-4 py-2">
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-neutral-500">Model</span>
@@ -258,6 +366,14 @@ export function ChatClient({
             ))}
           </Select>
         </div>
+        {!googleConnected && (
+          <a
+            href="/settings"
+            className="ml-auto rounded-full bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100"
+          >
+            Connect Google →
+          </a>
+        )}
       </div>
 
       {/* Thread */}
@@ -269,7 +385,10 @@ export function ChatClient({
                 How can I help with the project?
               </p>
               <p className="mt-1 text-sm">
-                Ask anything, attach a plan or invoice, or generate a scope of work.
+                Ask anything, attach a plan or invoice, generate a scope of work, or
+                {googleConnected
+                  ? " create a Google Doc/Sheet."
+                  : " connect Google to create real Docs & Sheets."}
               </p>
             </div>
           )}
@@ -286,27 +405,58 @@ export function ChatClient({
                 {m.attachments && m.attachments.length > 0 && (
                   <div className="mb-1 flex flex-wrap gap-1">
                     {m.attachments.map((a, j) => (
-                      <span
-                        key={j}
-                        className="rounded bg-black/10 px-2 py-0.5 text-xs"
-                      >
+                      <span key={j} className="rounded bg-black/10 px-2 py-0.5 text-xs">
                         {a.name}
                       </span>
                     ))}
                   </div>
                 )}
+                {m.role === "assistant" && <ActivityList activities={m.activities} />}
                 {m.role === "user" ? (
                   <p className="whitespace-pre-wrap">{m.text}</p>
                 ) : m.text ? (
                   <Markdown content={m.text} />
                 ) : m.streaming ? (
                   <div className="flex items-center gap-2 text-neutral-400">
-                    <Spinner /> Thinking…
+                    <Spinner /> Working…
                   </div>
                 ) : null}
               </div>
             </div>
           ))}
+
+          {/* Pending confirmation card */}
+          {writes.length > 0 && (
+            <Card className="border-amber-300 bg-amber-50 p-4">
+              <div className="mb-2 flex items-center gap-2 font-medium text-amber-900">
+                <AlertTriangle size={16} />
+                Approve {writes.length === 1 ? "this action" : "these actions"}?
+              </div>
+              <ul className="mb-3 list-disc space-y-1 pl-5 text-sm text-amber-900">
+                {writes.map((p) => (
+                  <li key={p.id}>{p.summary}</li>
+                ))}
+              </ul>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  className="bg-green-600 hover:bg-green-700"
+                  disabled={sending}
+                  onClick={() => confirmPending(true)}
+                >
+                  Approve {writes.length > 1 ? "all" : ""}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={sending}
+                  onClick={() => confirmPending(false)}
+                >
+                  Reject
+                </Button>
+              </div>
+            </Card>
+          )}
         </div>
       </div>
 
@@ -326,11 +476,7 @@ export function ChatClient({
                   className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs"
                 >
                   {a.name}
-                  <button
-                    onClick={() =>
-                      setAttachments((prev) => prev.filter((_, j) => j !== i))
-                    }
-                  >
+                  <button onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}>
                     <X size={12} />
                   </button>
                 </span>
@@ -374,15 +520,4 @@ export function ChatClient({
       </div>
     </div>
   );
-}
-
-function update_streamingOff(
-  setMessages: React.Dispatch<React.SetStateAction<ChatMsg[]>>,
-) {
-  setMessages((prev) => {
-    if (prev.length === 0) return prev;
-    const copy = [...prev];
-    copy[copy.length - 1] = { ...copy[copy.length - 1], streaming: false };
-    return copy;
-  });
 }

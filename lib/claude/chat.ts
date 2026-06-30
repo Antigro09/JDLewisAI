@@ -20,7 +20,7 @@ function isTextual(mime: string): boolean {
 }
 
 /** Convert an attachment to one or more Anthropic content blocks. */
-function attachmentBlocks(a: Attachment): unknown[] {
+export function attachmentBlocks(a: Attachment): unknown[] {
   if (a.mime.startsWith("image/")) {
     return [
       {

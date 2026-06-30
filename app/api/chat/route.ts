@@ -1,19 +1,13 @@
 import { NextResponse } from "next/server";
-import { and, asc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import {
-  conversations,
-  messages,
-  projects,
-  projectFiles,
-  type MessageBlock,
-} from "@/lib/db/schema";
+import { conversations, messages, type MessageBlock } from "@/lib/db/schema";
 import { getCurrentUser } from "@/lib/auth/server";
-import { buildSystemPrompt } from "@/lib/claude/system";
-import { streamChat } from "@/lib/claude/chat";
-import type { Attachment, ChatTurn } from "@/lib/claude/types";
+import { runAgentTurn, applyPendingDecisions } from "@/lib/claude/agent";
+import type { Attachment } from "@/lib/claude/types";
 import { resolveModel } from "@/lib/claude/models";
-import { recordUsage } from "@/lib/usage";
+import { isGoogleConnected } from "@/lib/google/client";
+import { buildChatSystem } from "@/lib/data";
 import { truncate } from "@/lib/utils";
 
 export const runtime = "nodejs";
@@ -30,48 +24,6 @@ type Body = {
   message?: string;
   attachments?: Attachment[];
 };
-
-function blocksToText(blocks: MessageBlock[]): string {
-  return blocks
-    .filter((b) => b.type === "text")
-    .map((b) => (b as { text: string }).text)
-    .join("\n");
-}
-
-async function projectContext(projectId: string): Promise<{
-  name: string;
-  instructions: string | null;
-}> {
-  const proj = (
-    await db.select().from(projects).where(eq(projects.id, projectId))
-  )[0];
-  if (!proj) return { name: "", instructions: null };
-
-  const files = await db
-    .select()
-    .from(projectFiles)
-    .where(eq(projectFiles.projectId, projectId));
-
-  let extra = proj.instructions ? proj.instructions + "\n" : "";
-  let budget = 50_000;
-  for (const f of files) {
-    if (f.mime.startsWith("text/") || f.mime === "application/json") {
-      if (budget <= 0) break;
-      let content = "";
-      try {
-        content = Buffer.from(f.data, "base64").toString("utf8");
-      } catch {
-        content = "";
-      }
-      const slice = content.slice(0, budget);
-      budget -= slice.length;
-      extra += `\n\n--- Project file: ${f.name} ---\n${slice}`;
-    } else {
-      extra += `\n\n[Project file available: ${f.name} (${f.mime})]`;
-    }
-  }
-  return { name: proj.name, instructions: extra || null };
-}
 
 export async function POST(req: Request) {
   const user = await getCurrentUser();
@@ -103,10 +55,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { model } = resolveModel(
-    body.model ?? "claude-opus-4-8",
-    body.effort ?? "high",
-  );
+  const { model } = resolveModel(body.model ?? "claude-opus-4-8", body.effort ?? "high");
   const effort = body.effort ?? "high";
 
   // Resolve or create the conversation.
@@ -117,15 +66,10 @@ export async function POST(req: Request) {
       await db
         .select()
         .from(conversations)
-        .where(
-          and(eq(conversations.id, convId), eq(conversations.userId, user.id)),
-        )
+        .where(and(eq(conversations.id, convId), eq(conversations.userId, user.id)))
     )[0];
     if (!existing) {
-      return NextResponse.json(
-        { error: "Conversation not found" },
-        { status: 404 },
-      );
+      return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
   } else {
     const created = await db
@@ -142,39 +86,28 @@ export async function POST(req: Request) {
     isNew = true;
   }
 
-  // Build history turns from stored messages.
-  const history = await db
-    .select()
-    .from(messages)
-    .where(eq(messages.conversationId, convId))
-    .orderBy(asc(messages.createdAt));
-
-  const turns: ChatTurn[] = history.map((m) => ({
-    role: m.role,
-    text: blocksToText(m.blocks),
-  }));
-
-  // Current user turn (with live attachments).
-  turns.push({ role: "user", text: message, attachments });
-
-  // System prompt with personalization + project context.
-  let projName: string | null = null;
-  let projInstr: string | null = null;
   const conv = (
     await db.select().from(conversations).where(eq(conversations.id, convId))
   )[0];
-  if (conv?.projectId) {
-    const ctx = await projectContext(conv.projectId);
-    projName = ctx.name;
-    projInstr = ctx.instructions;
-  }
-  const system = buildSystemPrompt({
-    personalization: user.personalization,
-    projectName: projName,
-    projectInstructions: projInstr,
-  });
 
-  // Persist the user message immediately (metadata only — not raw file bytes).
+  // If a confirmation was pending and the user sent a new message instead of
+  // confirming, treat it as declining the pending writes so API state stays valid.
+  if (conv?.pendingToolUses?.length) {
+    const decisions: Record<string, "approve" | "reject"> = {};
+    for (const p of conv.pendingToolUses)
+      if (p.kind === "write") decisions[p.id] = "reject";
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    for await (const _ev of applyPendingDecisions({
+      userId: user.id,
+      conversationId: convId,
+      pending: conv.pendingToolUses,
+      decisions,
+    })) {
+      // drain
+    }
+  }
+
+  // Persist the user message (metadata only — not raw file bytes).
   const userBlocks: MessageBlock[] = [];
   for (const a of attachments) {
     userBlocks.push(
@@ -190,6 +123,13 @@ export async function POST(req: Request) {
     blocks: userBlocks,
   });
 
+  const googleEnabled = await isGoogleConnected(user.id);
+  const system = await buildChatSystem(
+    user,
+    { projectId: conv?.projectId ?? null },
+    googleEnabled,
+  );
+
   const encoder = new TextEncoder();
   const conversationId = convId;
   const convTitle = conv?.title ?? truncate(message, 50);
@@ -198,33 +138,19 @@ export async function POST(req: Request) {
     async start(controller) {
       const send = (obj: unknown) =>
         controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
-
       send({ type: "meta", conversationId, isNew, title: convTitle });
-
-      let assistantText = "";
-      let thinkingText = "";
-      let inTok = 0;
-      let outTok = 0;
-
       try {
-        for await (const ev of streamChat({
+        for await (const ev of runAgentTurn({
+          userId: user.id,
+          conversationId,
           model: model.id,
           effort,
           system,
-          turns,
+          googleEnabled,
+          liveAttachments: attachments,
+          liveText: message,
         })) {
-          if (ev.type === "text") {
-            assistantText += ev.text;
-            send({ type: "text", text: ev.text });
-          } else if (ev.type === "thinking") {
-            thinkingText += ev.text;
-            send({ type: "thinking", text: ev.text });
-          } else if (ev.type === "error") {
-            send({ type: "error", message: ev.message });
-          } else if (ev.type === "done") {
-            inTok = ev.inputTokens;
-            outTok = ev.outputTokens;
-          }
+          send(ev);
         }
       } catch (err) {
         send({
@@ -232,36 +158,6 @@ export async function POST(req: Request) {
           message: err instanceof Error ? err.message : "Stream failed",
         });
       }
-
-      // Persist the assistant message + usage.
-      const aBlocks: MessageBlock[] = [];
-      if (thinkingText) aBlocks.push({ type: "thinking", text: thinkingText });
-      aBlocks.push({ type: "text", text: assistantText });
-      try {
-        await db.insert(messages).values({
-          conversationId,
-          role: "assistant",
-          blocks: aBlocks,
-          model: model.id,
-          inputTokens: inTok,
-          outputTokens: outTok,
-        });
-        await db
-          .update(conversations)
-          .set({ updatedAt: new Date() })
-          .where(eq(conversations.id, conversationId));
-      } catch {
-        // ignore persistence errors in the stream tail
-      }
-      await recordUsage({
-        userId: user.id,
-        model: model.id,
-        feature: "chat",
-        inputTokens: inTok,
-        outputTokens: outTok,
-      });
-
-      send({ type: "done", inputTokens: inTok, outputTokens: outTok });
       controller.close();
     },
   });

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { users, type Personalization } from "@/lib/db/schema";
+import { users, googleAccounts, type Personalization } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/server";
 
 export async function updatePersonalization(formData: FormData) {
@@ -19,5 +19,11 @@ export async function updatePersonalization(formData: FormData) {
     .update(users)
     .set({ personalization })
     .where(eq(users.id, user.id));
+  revalidatePath("/settings");
+}
+
+export async function disconnectGoogle() {
+  const user = await requireUser();
+  await db.delete(googleAccounts).where(eq(googleAccounts.userId, user.id));
   revalidatePath("/settings");
 }

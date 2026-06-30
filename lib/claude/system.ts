@@ -23,12 +23,22 @@ Behavior:
 - Use clear structure (headings, bullets, tables) for deliverables.
 - When asked to produce a document, spreadsheet, or code, produce the full content directly.`;
 
+export const GOOGLE_TOOLS_NOTE = `Google Workspace is connected for this user. You can use the
+Google tools to search/read/create/edit Drive files (Docs & Sheets) and read/send Gmail. When the
+user asks you to create or edit a real document, spreadsheet, or email, USE the tools to do it for
+real (don't just print the content) and share the resulting link. Read tools run automatically;
+create/edit/send actions are shown to the user for one-click approval before they run, so go ahead
+and call them when appropriate. After acting, briefly confirm what you did and include the link.`;
+
 export function buildSystemPrompt(opts: {
   personalization?: Personalization | null;
   projectName?: string | null;
   projectInstructions?: string | null;
+  googleEnabled?: boolean;
 }): string {
   const parts = [BASE_SYSTEM];
+
+  if (opts.googleEnabled) parts.push(GOOGLE_TOOLS_NOTE);
 
   if (opts.personalization) {
     const p = opts.personalization;

@@ -66,11 +66,29 @@ Set `ALLOWED_SIGNUP_DOMAIN` (e.g. `yourcompany.com`) to restrict self-registrati
 3. Run `npm run db:push` (locally or via a one-off) against the Neon DB, then `npm run db:seed`.
 4. Deploy. The chat route streams on the Node runtime (`maxDuration = 300`).
 
-## Roadmap (later phases)
+## Google integration (Phase 2)
 
-- **Phase 2 — Google integration:** per-user OAuth for Drive/Docs/Sheets/Gmail, exposed as
-  Claude tools so the AI creates/edits real files in the user's Drive (`GoogleAccount` table and
-  `lib/crypto.ts` token encryption are already in place).
+Each employee connects their own Google account; the AI then searches/reads/creates/edits real
+Drive files (Docs & Sheets) and reads/sends Gmail **from chat**. Read actions run automatically;
+create/edit/send actions pause for one-click approval in the chat.
+
+**Google Cloud setup (admin, one-time):**
+
+1. Create a Google Cloud project and enable the **Drive, Docs, Sheets, and Gmail** APIs.
+2. OAuth consent screen → **Internal** (Workspace org) so sensitive scopes work without app
+   verification.
+3. Create an **OAuth client (Web application)** with redirect URI
+   `https://YOUR_APP/api/google/callback` (e.g. `http://localhost:3000/api/google/callback` in dev).
+4. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` in the env.
+
+Scopes requested: Drive, Docs, Sheets, `gmail.readonly`, `gmail.send`. Tokens are stored
+encrypted (`lib/crypto.ts`, AES-256-GCM) and refreshed automatically. Each user connects from
+**Settings → Connect Google**.
+
+Run `npm run db:push` after pulling Phase 2 — it adds `messages.raw_content` and
+`conversations.pending_tool_uses`.
+
+## Roadmap (later phases)
 - **Phase 3 — Automations/routines:** natural-language automations that run indefinitely and
   connect apps (e.g. group emails → spreadsheet), via scheduled jobs / Managed Agents
   (`automations` table is scaffolded).

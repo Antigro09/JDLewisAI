@@ -25,8 +25,25 @@ export type MessageBlock =
   | { type: "thinking"; text: string }
   | { type: "image"; mime: string; name: string }
   | { type: "document"; mime: string; name: string }
-  | { type: "tool_use"; name: string; input: unknown }
-  | { type: "tool_result"; name: string; output: string };
+  // Replay-critical: assistant tool call (id) and its result (toolUseId).
+  | { type: "tool_use"; id: string; name: string; input: unknown }
+  | {
+      type: "tool_result";
+      toolUseId: string;
+      name: string;
+      output: string; // model-facing content (often JSON)
+      summary?: string; // short, human-friendly line for the UI
+      link?: string; // e.g. a Drive/Doc/Sheet URL
+      isError?: boolean;
+    };
+
+/** A tool call awaiting user confirmation (stored on the conversation). */
+export type PendingToolUse = {
+  id: string;
+  name: string;
+  input: unknown;
+  kind: "read" | "write";
+};
 
 const id = () =>
   text("id")
@@ -92,6 +109,8 @@ export const conversations = pgTable("conversations", {
   title: text("title").notNull().default("New chat"),
   model: text("model").notNull(),
   effort: text("effort").notNull().default("high"),
+  // Tool calls paused awaiting user confirmation (write/send actions).
+  pendingToolUses: jsonb("pending_tool_uses").$type<PendingToolUse[]>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -103,6 +122,9 @@ export const messages = pgTable("messages", {
     .references(() => conversations.id, { onDelete: "cascade" }),
   role: text("role").$type<"user" | "assistant">().notNull(),
   blocks: jsonb("blocks").$type<MessageBlock[]>().notNull(),
+  // Verbatim Anthropic API content for assistant turns (preserves thinking
+  // signatures + tool_use blocks for exact replay across tool/confirm steps).
+  rawContent: jsonb("raw_content").$type<unknown[]>(),
   model: text("model"),
   inputTokens: integer("input_tokens").default(0),
   outputTokens: integer("output_tokens").default(0),
