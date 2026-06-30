@@ -70,3 +70,25 @@ export async function generateScopeOfWork(opts: {
 
   return { sections, usage };
 }
+
+const SECTION_LABELS: { key: keyof ScopeSections; label: string }[] = [
+  { key: "workIncluded", label: "Work Included" },
+  { key: "exclusions", label: "Exclusions" },
+  { key: "assumptions", label: "Assumptions" },
+  { key: "requiredInspections", label: "Required Inspections" },
+  { key: "requiredPermits", label: "Required Permits" },
+  { key: "requiredSubmittals", label: "Required Submittals" },
+  { key: "closeoutRequirements", label: "Closeout Requirements" },
+];
+
+export function scopeToMarkdown(title: string, s: ScopeSections): string {
+  const parts = [`# ${title}`, ""];
+  for (const { key, label } of SECTION_LABELS) {
+    parts.push(`## ${label}`);
+    const items = s[key] ?? [];
+    if (items.length === 0) parts.push("- (none)");
+    else for (const it of items) parts.push(`- ${it}`);
+    parts.push("");
+  }
+  return parts.join("\n");
+}

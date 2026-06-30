@@ -14,6 +14,7 @@ import { effectivePlugins } from "@/lib/plugins";
 import { AUTOMATION_TOOL_NAMES } from "@/lib/tools/google-tools";
 import { BASE_SYSTEM, GOOGLE_TOOLS_NOTE } from "@/lib/claude/system";
 import { truncate } from "@/lib/utils";
+import { createNotification, maybeSendEmailNotification } from "@/lib/notifications";
 
 const AUTOMATION_NOTE = `You are running as an UNATTENDED AUTOMATION on behalf of the user. No human
 is available to confirm actions, so complete the task end-to-end using your tools. You may read
@@ -133,4 +134,17 @@ Only process items since the last run to avoid duplicates. Complete the task now
       lastError: errored,
     })
     .where(eq(automations.id, auto.id));
+
+  const title = errored
+    ? `Automation failed: ${auto.name}`
+    : `Automation completed: ${auto.name}`;
+  const body = errored || truncate(summary.trim(), 300) || "No summary.";
+  await createNotification({
+    userId: owner.id,
+    kind: errored ? "error" : "task_complete",
+    title,
+    body,
+    link: "/automations",
+  });
+  await maybeSendEmailNotification({ userId: owner.id, title, body });
 }

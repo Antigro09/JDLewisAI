@@ -30,6 +30,11 @@ real (don't just print the content) and share the resulting link. Read tools run
 create/edit/send actions are shown to the user for one-click approval before they run, so go ahead
 and call them when appropriate. After acting, briefly confirm what you did and include the link.`;
 
+export const RESEARCH_MODE_NOTE = `Research mode is ON for this message. Investigate thoroughly
+using every available tool (including web search) before answering — don't settle for the first
+result. Cross-check claims across multiple sources where it matters, cite sources/links for any
+external facts, and clearly note where information is uncertain or conflicting.`;
+
 export function buildSystemPrompt(opts: {
   personalization?: Personalization | null;
   projectName?: string | null;

@@ -11,8 +11,8 @@ export const Button = React.forwardRef<
   const variants: Record<string, string> = {
     primary: "bg-brand-600 text-white hover:bg-brand-700 disabled:bg-brand-300",
     secondary:
-      "border border-neutral-300 bg-white text-neutral-800 hover:bg-neutral-100",
-    ghost: "text-neutral-700 hover:bg-neutral-100",
+      "border border-neutral-300 bg-white text-neutral-800 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800",
+    ghost: "text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
     danger: "bg-red-600 text-white hover:bg-red-700",
   };
   const sizes: Record<string, string> = {
@@ -41,7 +41,7 @@ export const Input = React.forwardRef<
   <input
     ref={ref}
     className={cn(
-      "h-10 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100",
+      "h-10 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100",
       className,
     )}
     {...props}
@@ -56,7 +56,7 @@ export const Textarea = React.forwardRef<
   <textarea
     ref={ref}
     className={cn(
-      "w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100",
+      "w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100",
       className,
     )}
     {...props}
@@ -71,7 +71,7 @@ export const Select = React.forwardRef<
   <select
     ref={ref}
     className={cn(
-      "h-9 rounded-lg border border-neutral-300 bg-white px-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100",
+      "h-9 rounded-lg border border-neutral-300 bg-white px-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100",
       className,
     )}
     {...props}
@@ -87,7 +87,10 @@ export function Label({
 }: React.LabelHTMLAttributes<HTMLLabelElement>) {
   return (
     <label
-      className={cn("mb-1 block text-sm font-medium text-neutral-700", className)}
+      className={cn(
+        "mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-300",
+        className,
+      )}
       {...props}
     />
   );
@@ -100,7 +103,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-xl border border-neutral-200 bg-white shadow-sm",
+        "rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900",
         className,
       )}
       {...props}

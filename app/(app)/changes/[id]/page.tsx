@@ -29,6 +29,11 @@ export default async function ChangeOrderDetailPage({
       action={
         <div className="flex items-center gap-3">
           <StatusBadge status={co.status} size="lg" />
+          {co.generatedDraft && (
+            <Link href={`/print/change-order/${co.id}`}>
+              <Button variant="secondary" size="sm">View branded</Button>
+            </Link>
+          )}
           <Link href="/changes">
             <Button variant="secondary" size="sm">All Change Orders</Button>
           </Link>

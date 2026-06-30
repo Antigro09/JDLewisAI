@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { conversations, messages, type MessageBlock } from "@/lib/db/schema";
+import { conversations, type MessageBlock } from "@/lib/db/schema";
 import { getCurrentUser } from "@/lib/auth/server";
-import { runAgentTurn, applyPendingDecisions } from "@/lib/claude/agent";
+import { applyPendingDecisions } from "@/lib/claude/agent";
 import type { Attachment } from "@/lib/claude/types";
 import { resolveModel } from "@/lib/claude/models";
 import { isGoogleConnected } from "@/lib/google/client";
 import { effectivePlugins } from "@/lib/plugins";
 import { buildChatSystem } from "@/lib/data";
 import { truncate } from "@/lib/utils";
+import { RESEARCH_MODE_NOTE } from "@/lib/claude/system";
+import { appendMessage } from "@/lib/chat/branches";
+import { streamAgentTurn } from "@/lib/chat/run-turn";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +28,8 @@ type Body = {
   message?: string;
   attachments?: Attachment[];
   skillIds?: string[];
+  researchMode?: boolean;
+  webSearch?: boolean;
 };
 
 export async function POST(req: Request) {
@@ -119,7 +124,7 @@ export async function POST(req: Request) {
     );
   }
   if (message) userBlocks.push({ type: "text", text: message });
-  await db.insert(messages).values({
+  await appendMessage({
     conversationId: convId,
     role: "user",
     blocks: userBlocks,
@@ -138,45 +143,37 @@ export async function POST(req: Request) {
   const plugins = await effectivePlugins(user.id);
   const googleEnabled =
     plugins.google !== false && (await isGoogleConnected(user.id));
-  const webSearch = plugins.web_search === true;
+  const researchMode = Boolean(body.researchMode);
+  const webSearch =
+    typeof body.webSearch === "boolean"
+      ? body.webSearch
+      : plugins.web_search === true;
 
-  const system = await buildChatSystem(
+  let system = await buildChatSystem(
     user,
     { projectId: conv?.projectId ?? null, skillIds: activeSkillIds },
     googleEnabled,
   );
+  if (researchMode) system = `${system}\n\n${RESEARCH_MODE_NOTE}`;
 
-  const encoder = new TextEncoder();
   const conversationId = convId;
   const convTitle = conv?.title ?? truncate(message, 50);
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      const send = (obj: unknown) =>
-        controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
-      send({ type: "meta", conversationId, isNew, title: convTitle });
-      try {
-        for await (const ev of runAgentTurn({
-          userId: user.id,
-          conversationId,
-          model: model.id,
-          effort,
-          system,
-          googleEnabled,
-          webSearch,
-          liveAttachments: attachments,
-          liveText: message,
-        })) {
-          send(ev);
-        }
-      } catch (err) {
-        send({
-          type: "error",
-          message: err instanceof Error ? err.message : "Stream failed",
-        });
-      }
-      controller.close();
+  const stream = streamAgentTurn({
+    agentOptions: {
+      userId: user.id,
+      conversationId,
+      model: model.id,
+      effort,
+      system,
+      googleEnabled,
+      webSearch,
+      researchMode,
+      liveAttachments: attachments,
+      liveText: message,
     },
+    meta: { conversationId, isNew, title: convTitle },
+    convTitle,
   });
 
   return new Response(stream, {

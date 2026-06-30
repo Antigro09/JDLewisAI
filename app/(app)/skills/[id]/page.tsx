@@ -1,12 +1,14 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { eq } from "drizzle-orm";
+import { FileText } from "lucide-react";
 import { requireUser } from "@/lib/auth/server";
 import { db } from "@/lib/db";
 import { skills } from "@/lib/db/schema";
 import { PageShell } from "@/components/page-shell";
 import { Badge, Button, Card, Input, Label, Select, Textarea } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
+import { listSkillFiles } from "@/lib/skills";
 import { updateSkill, deleteSkill } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +29,8 @@ export default async function SkillDetailPage({
   const canEdit =
     skill.ownerId === user.id ||
     (user.role === "ADMIN" && skill.scope === "org");
+
+  const files = (await listSkillFiles(skill.id)).filter((f) => f.kind === "reference");
 
   return (
     <PageShell
@@ -114,6 +118,26 @@ export default async function SkillDetailPage({
           </form>
         )}
       </Card>
+
+      {files.length > 0 && (
+        <Card className="mt-6 max-w-2xl p-6">
+          <h3 className="mb-3 font-semibold text-neutral-900 dark:text-neutral-100">
+            Reference files
+          </h3>
+          <div className="space-y-2">
+            {files.map((f) => (
+              <a
+                key={f.id}
+                href={`/api/skills/${skill.id}/files/${f.id}`}
+                className="flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50 dark:border-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-800"
+              >
+                <FileText size={15} className="shrink-0 text-neutral-400" />
+                <span className="truncate">{f.name}</span>
+              </a>
+            ))}
+          </div>
+        </Card>
+      )}
     </PageShell>
   );
 }

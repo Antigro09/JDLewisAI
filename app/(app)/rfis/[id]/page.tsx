@@ -29,6 +29,11 @@ export default async function RfiDetailPage({
       action={
         <div className="flex items-center gap-3">
           <StatusBadge status={rfi.status} size="lg" />
+          {rfi.generatedDraft && (
+            <Link href={`/print/rfi/${rfi.id}`}>
+              <Button variant="secondary" size="sm">View branded</Button>
+            </Link>
+          )}
           <Link href="/rfis">
             <Button variant="secondary" size="sm">All RFIs</Button>
           </Link>
