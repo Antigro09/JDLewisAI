@@ -31,6 +31,44 @@ export async function driveSearch(
   return data.files ?? [];
 }
 
+export async function driveListFolder(
+  token: string,
+  folderId: string,
+  pageSize = 50,
+): Promise<DriveFile[]> {
+  const params = new URLSearchParams({
+    q: `'${folderId}' in parents and trashed = false`,
+    pageSize: String(pageSize),
+    fields: "files(id,name,mimeType,webViewLink,modifiedTime)",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  });
+  const data = await gfetch<{ files?: DriveFile[] }>(
+    token,
+    `https://www.googleapis.com/drive/v3/files?${params.toString()}`,
+  );
+  return data.files ?? [];
+}
+
+/** Downloads raw file bytes (for vision input) — distinct from driveReadFile's
+ * text-export path, which can't return binary PDF/image content. */
+export async function driveDownloadBinary(
+  token: string,
+  fileId: string,
+): Promise<{ name: string; mime: string; base64: string }> {
+  const meta = await driveGetFile(token, fileId);
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Google API ${res.status}: ${text.slice(0, 500)}`);
+  }
+  const buffer = Buffer.from(await res.arrayBuffer());
+  return { name: meta.name, mime: meta.mimeType, base64: buffer.toString("base64") };
+}
+
 export async function driveGetFile(
   token: string,
   fileId: string,

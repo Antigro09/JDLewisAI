@@ -7,6 +7,7 @@ import { scopesOfWork, type ScopeSections } from "@/lib/db/schema";
 import { PageShell } from "@/components/page-shell";
 import { Button, Card } from "@/components/ui";
 import { DownloadButton } from "@/components/download-button";
+import { scopeToMarkdown } from "@/lib/tools/scope";
 import { deleteScope } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -21,18 +22,6 @@ const SECTION_META: { key: keyof ScopeSections; label: string }[] = [
   { key: "closeoutRequirements", label: "Closeout Requirements" },
 ];
 
-function toMarkdown(title: string, s: ScopeSections): string {
-  const parts = [`# ${title}`, ""];
-  for (const { key, label } of SECTION_META) {
-    parts.push(`## ${label}`);
-    const items = s[key] ?? [];
-    if (items.length === 0) parts.push("- (none)");
-    else for (const it of items) parts.push(`- ${it}`);
-    parts.push("");
-  }
-  return parts.join("\n");
-}
-
 export default async function ScopeDetailPage({
   params,
 }: {
@@ -45,7 +34,7 @@ export default async function ScopeDetailPage({
   )[0];
   if (!scope || scope.userId !== user.id) notFound();
 
-  const md = toMarkdown(scope.title, scope.sections);
+  const md = scopeToMarkdown(scope.title, scope.sections);
   const filename = `${scope.trade.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-scope.md`;
 
   return (
@@ -55,6 +44,11 @@ export default async function ScopeDetailPage({
       action={
         <div className="flex gap-2">
           <DownloadButton content={md} filename={filename} label="Download .md" />
+          <Link href={`/print/scope/${scope.id}`}>
+            <Button variant="secondary" size="sm">
+              View branded
+            </Button>
+          </Link>
           <Link href="/scopes">
             <Button variant="secondary" size="sm">
               All scopes

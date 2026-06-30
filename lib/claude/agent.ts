@@ -1,8 +1,7 @@
-import { asc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   conversations,
-  messages,
   type MessageBlock,
   type PendingToolUse,
 } from "@/lib/db/schema";
@@ -16,6 +15,7 @@ import {
   runGoogleTool,
 } from "@/lib/tools/google-tools";
 import { recordUsage } from "@/lib/usage";
+import { appendMessage, buildActivePath } from "@/lib/chat/branches";
 
 const MAX_STEPS = 8;
 
@@ -39,12 +39,16 @@ export type AgentEvent =
 type ApiContentBlock = Record<string, unknown>;
 type ApiMessage = { role: "user" | "assistant"; content: ApiContentBlock[] };
 
+/** Loads the conversation's active branch only — not every message ever sent
+ * in every branch — so the model never sees content from an inactive branch. */
 async function loadMessages(conversationId: string) {
-  return db
-    .select()
-    .from(messages)
-    .where(eq(messages.conversationId, conversationId))
-    .orderBy(asc(messages.createdAt));
+  const conv = (
+    await db
+      .select({ activeLeafId: conversations.activeLeafId })
+      .from(conversations)
+      .where(eq(conversations.id, conversationId))
+  )[0];
+  return buildActivePath(conversationId, conv?.activeLeafId ?? null);
 }
 
 /** Rebuild Anthropic API messages from stored rows. */
@@ -121,6 +125,8 @@ export type RunAgentOptions = {
   usageFeature?: string;
   /** Enable the Anthropic web search server tool. */
   webSearch?: boolean;
+  /** Deeper multi-step investigation: raises the step cap and forces web search on. */
+  researchMode?: boolean;
 };
 
 /**
@@ -155,13 +161,15 @@ export async function* runAgentTurn(
     if (opts.toolNames) g = g.filter((d) => opts.toolNames!.includes(d.name));
     tools.push(...g);
   }
-  if (opts.webSearch) {
+  const webSearchEnabled = opts.webSearch || opts.researchMode;
+  if (webSearchEnabled) {
     // Dynamic-filtering variant on Opus/Sonnet 4.6+, basic on Haiku.
     const wsType = model.id.includes("haiku")
       ? "web_search_20250305"
       : "web_search_20260209";
     tools.push({ type: wsType, name: "web_search" });
   }
+  const maxSteps = opts.researchMode ? 16 : MAX_STEPS;
   let inTok = 0;
   let outTok = 0;
 
@@ -176,7 +184,7 @@ export async function* runAgentTurn(
   };
 
   try {
-    for (let step = 0; step < MAX_STEPS; step++) {
+    for (let step = 0; step < maxSteps; step++) {
       const params: Record<string, unknown> = {
         model: model.id,
         max_tokens: 16000,
@@ -218,7 +226,7 @@ export async function* runAgentTurn(
       apiMessages.push({ role: "assistant", content });
 
       // Persist the assistant turn (display blocks + verbatim rawContent).
-      await db.insert(messages).values({
+      await appendMessage({
         conversationId: opts.conversationId,
         role: "assistant",
         blocks: contentToBlocks(content),
@@ -299,7 +307,7 @@ export async function* runAgentTurn(
         };
       }
       apiMessages.push({ role: "user", content: resultContent });
-      await db.insert(messages).values({
+      await appendMessage({
         conversationId: opts.conversationId,
         role: "user",
         blocks: resultBlocks,
@@ -369,7 +377,7 @@ export async function* applyPendingDecisions(opts: {
     };
   }
 
-  await db.insert(messages).values({
+  await appendMessage({
     conversationId: opts.conversationId,
     role: "user",
     blocks: resultBlocks,

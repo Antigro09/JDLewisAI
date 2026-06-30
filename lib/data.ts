@@ -2,7 +2,6 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   conversations,
-  messages,
   projects,
   projectFiles,
   type AppUser,
@@ -12,6 +11,7 @@ import {
 import { MODELS, DEFAULT_MODEL, getModel } from "@/lib/claude/models";
 import { buildSystemPrompt } from "@/lib/claude/system";
 import { resolveActiveSkills, buildSkillsPrompt } from "@/lib/skills";
+import { buildActivePath, getSiblings } from "@/lib/chat/branches";
 import type { ModelOption } from "@/components/chat/chat-client";
 
 export function modelOptions(): ModelOption[] {
@@ -37,7 +37,12 @@ export function resolveDefaults(personalization?: {
 
 export async function listConversations(userId: string) {
   return db
-    .select({ id: conversations.id, title: conversations.title })
+    .select({
+      id: conversations.id,
+      title: conversations.title,
+      pinned: conversations.pinned,
+      updatedAt: conversations.updatedAt,
+    })
     .from(conversations)
     .where(
       and(
@@ -45,8 +50,8 @@ export async function listConversations(userId: string) {
         isNull(conversations.automationId),
       ),
     )
-    .orderBy(desc(conversations.updatedAt))
-    .limit(50);
+    .orderBy(desc(conversations.pinned), desc(conversations.updatedAt))
+    .limit(100);
 }
 
 export async function listProjects(userId: string) {
@@ -65,18 +70,19 @@ export async function getConversationForUser(userId: string, id: string) {
       .where(and(eq(conversations.id, id), eq(conversations.userId, userId)))
   )[0];
   if (!conv) return null;
-  const rows = await db
-    .select()
-    .from(messages)
-    .where(eq(messages.conversationId, id))
-    .orderBy(messages.createdAt);
+  // Only the active branch — not every message ever sent in every branch.
+  const rows = await buildActivePath(id, conv.activeLeafId);
   type Activity = { tool: string; summary: string; link?: string; isError?: boolean };
+  type BranchInfo = { current: number; total: number; siblingIds: string[] };
   type DisplayMsg = {
+    id: string;
+    parentId: string | null;
     role: "user" | "assistant";
     text: string;
     thinking: string;
     attachments: { name: string; mime: string }[];
     activities: Activity[];
+    branchInfo?: BranchInfo;
   };
   const msgs: DisplayMsg[] = [];
   for (const m of rows) {
@@ -114,11 +120,40 @@ export async function getConversationForUser(userId: string, id: string) {
     // Skip empty assistant placeholders (e.g. a turn that only made tool calls
     // with no preamble — its activity is folded in from the following turn).
     if (m.role === "assistant" && !text && !thinking) {
-      msgs.push({ role: "assistant", text: "", thinking: "", attachments: [], activities: [] });
+      msgs.push({
+        id: m.id,
+        parentId: m.parentId,
+        role: "assistant",
+        text: "",
+        thinking: "",
+        attachments: [],
+        activities: [],
+      });
       continue;
     }
-    msgs.push({ role: m.role, text, thinking, attachments, activities: [] });
+    msgs.push({
+      id: m.id,
+      parentId: m.parentId,
+      role: m.role,
+      text,
+      thinking,
+      attachments,
+      activities: [],
+    });
   }
+
+  // Branch navigation: only nodes with >1 sibling get a switcher.
+  for (const m of msgs) {
+    const siblings = await getSiblings(id, m.parentId);
+    if (siblings.length > 1) {
+      m.branchInfo = {
+        current: siblings.findIndex((s) => s.id === m.id) + 1,
+        total: siblings.length,
+        siblingIds: siblings.map((s) => s.id),
+      };
+    }
+  }
+
   return { conv, messages: msgs };
 }
 

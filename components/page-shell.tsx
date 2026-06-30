@@ -14,9 +14,13 @@ export function PageShell({
       <div className="mx-auto max-w-5xl px-6 py-8">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold text-neutral-900">{title}</h1>
+            <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
+              {title}
+            </h1>
             {description && (
-              <p className="mt-1 text-sm text-neutral-500">{description}</p>
+              <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+                {description}
+              </p>
             )}
           </div>
           {action}

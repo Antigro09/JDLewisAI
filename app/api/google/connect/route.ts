@@ -8,7 +8,9 @@ export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.redirect(new URL("/login", req.url));
   if (!googleConfigured()) {
-    return NextResponse.redirect(new URL("/settings?google=unconfigured", req.url));
+    return NextResponse.redirect(
+      new URL("/customize?tab=connections&google=unconfigured", req.url),
+    );
   }
   const state = await createOAuthState(user.id);
   return NextResponse.redirect(getAuthUrl(state));

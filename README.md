@@ -83,7 +83,7 @@ create/edit/send actions pause for one-click approval in the chat.
 
 Scopes requested: Drive, Docs, Sheets, `gmail.readonly`, `gmail.send`. Tokens are stored
 encrypted (`lib/crypto.ts`, AES-256-GCM) and refreshed automatically. Each user connects from
-**Settings → Connect Google**.
+**Customize → Connections**.
 
 Run `npm run db:push` after pulling Phase 2 — it adds `messages.raw_content` and
 `conversations.pending_tool_uses`.
@@ -115,13 +115,13 @@ Run `npm run db:push` after pulling Phase 3 — it adds the new `automations` co
 ## Skills & plugins (Phase 4)
 
 **Skills** are reusable instruction packs (name, description, instructions) the AI follows — e.g.
-"Company RFI format" or "Bid email style." Manage them under **Skills** in the sidebar:
+"Company RFI format" or "Bid email style." Manage them under **Customize → Skills** in the sidebar:
 
 - Personal skills (yours) and **org-wide** skills (admins publish to everyone).
 - "Active by default" skills apply to every chat; a **Skills** picker in the chat header lets you
   toggle which skills apply to a given conversation.
 
-**Plugins** are capability toggles (Settings → Plugins for your own; Admin → Plugin defaults for
+**Plugins** are capability toggles (Customize → Plugins for your own; Admin → Plugin defaults for
 org-wide defaults):
 
 - **Google Workspace** — Drive/Docs/Sheets/Gmail tools in chat (needs Google connected).
@@ -145,6 +145,10 @@ Beyond the core Phase 1–4 build, the platform also includes:
   formatted daily site report.
 - **Bid Comparison** (`/bids`) — compare 2+ vendor quotes side by side with AI analysis and a
   recommendation.
+- **Material Takeoff** (`/material-takeoff`) — point at a Google Drive folder of invoices; the AI
+  reads each one, sums quantities by product/material across all of them, and writes a real Sheet.
+- **Plan Reader → Door & Framing Takeoff** — a mode on `/plans` that inventories doors (type, size,
+  swing, count) and estimates framing linear footage from wall thickness/stud inputs.
 - **Project Knowledge Search** (`/search`) — ask questions across all text-based files attached to
   your projects; answers are grounded only in your uploaded content.
 - **Field Capture** (`/capture`) — mobile-optimized camera capture (`capture="environment"`) for
@@ -152,22 +156,57 @@ Beyond the core Phase 1–4 build, the platform also includes:
 - **Admin cost dashboard** — `/admin` now shows total spend, total tokens, automation run counts,
   and a cost-by-feature breakdown in addition to per-user usage.
 
+## Workspace UX, branching & branding (Phase 5)
+
+- **Sidebar** — Chat/Projects/Automations/Customize stay primary; the 11 document tools collapse
+  under a scrollable **More** section; the chat tab shows **Pinned**/**Recents** with
+  rename/pin/delete; the whole sidebar can collapse to icon-only.
+- **Customize** (`/customize`) — Connections (Google), Plugins, and Skills in one place. Skills can
+  now be created by **uploading a `SKILL.md`** (YAML frontmatter + instructions body, same shape
+  Claude uses) plus optional reference files, in addition to the original manual form.
+- **Settings** (`/settings`) — General (personalization + appearance), Account (profile + change
+  password), and Privacy tabs.
+- **Dark mode** — system/light/dark, saved per-user and synced via `next-themes`.
+- **Composer** — model/effort moved below the message box as a compact dropdown; per-message
+  **Research** (deeper multi-step investigation + forced web search) and **Web Search** toggles.
+- **Message editing & branching** — edit or delete any of your sent messages. Editing branches
+  (the old reply is preserved and reachable via `‹ 1/2 ›` controls); deleting removes that message
+  and everything after it.
+- **Notifications** — an in-app bell for automation completions/errors and chat approval-needed
+  events, with an optional opt-in email copy (Settings → General) sent via your own connected
+  Gmail.
+- **Document branding** — Admin can set a company logo/header/footer/brand color, applied to a
+  printable view of RFIs/Change Orders/Daily Reports/Scopes/EAPs (`/print/[kind]/[id]`, or inline
+  for EAP). "Download PDF" here means browser print-to-PDF, not a server-generated file — no new
+  PDF dependency.
+
+Run `npm run db:push` after pulling Phase 5 — it adds `conversations.pinned`,
+`conversations.active_leaf_id`, `messages.parent_id`, and the `skill_files`, `notifications`, and
+`document_templates` tables.
+
 ## Roadmap
 
-- ~~**Phase 2 — Google**~~ · ~~**Phase 3 — Automations**~~ · ~~**Phase 4 — Skills & plugins**~~ — all done.
+- ~~**Phase 2 — Google**~~ · ~~**Phase 3 — Automations**~~ · ~~**Phase 4 — Skills & plugins**~~ ·
+  ~~**Phase 5 — Workspace UX, branching & branding**~~ — all done.
 - ~~RFI/submittal/change-order generators, bid comparison, project-knowledge RAG, richer admin
   cost dashboard, mobile field capture~~ — all done.
+- **Future:** a multi-agent orchestrator, third-party connectors (Procore, Autodesk, Bluebeam,
+  QuickBooks, …), MCP server integrations, a voice assistant, long-term vector memory/RAG across
+  history, a plugin marketplace, a general workflow engine, and multi-model routing are explicitly
+  out of scope for now — each is a substantial standalone project.
 
 ## Project layout
 
 ```
 app/(auth)        sign-in / sign-up
 app/(app)         authenticated shell: chat, projects, scopes, invoices, plans, eap, settings, admin
-app/api/chat      streaming chat endpoint
-lib/claude        Anthropic client, model registry, effort, streaming, generation
-lib/tools         construction generators (scope, invoice, plan, eap) + trade list
+app/api/chat      streaming + edit chat endpoints
+lib/claude        Anthropic client, model registry, effort, streaming, generation, agent loop
+lib/chat          branch-aware message tree helpers (lib/chat/branches.ts) + shared SSE streaming
+lib/tools         construction generators (scope, invoice, plan, eap, material-takeoff) + trade list
+lib/templates     org document-branding lookup for the printable/PDF view
 lib/db            Drizzle schema + client + seed
 lib/auth          password hashing, JWT session, RBAC helpers
-components         UI primitives, sidebar, chat, markdown, status badges
+components         UI primitives, sidebar, chat, markdown, status badges, branded-document
 templates         Emergency Action Plan template
 ```
