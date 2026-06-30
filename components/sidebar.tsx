@@ -14,6 +14,13 @@ import {
   Settings,
   Users,
   LogOut,
+  HelpCircle,
+  ClipboardList,
+  FilePlus2,
+  CalendarDays,
+  Scale,
+  Search,
+  Camera,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOutAction } from "@/app/(auth)/actions";
@@ -24,7 +31,14 @@ const NAV = [
   { href: "/scopes", label: "Scopes of Work", icon: FileText },
   { href: "/invoices", label: "Invoices", icon: Receipt },
   { href: "/plans", label: "Plan Reader", icon: Map },
+  { href: "/capture", label: "Field Capture", icon: Camera },
   { href: "/eap", label: "Emergency Plan", icon: ShieldAlert },
+  { href: "/rfis", label: "RFIs", icon: HelpCircle },
+  { href: "/submittals", label: "Submittal Log", icon: ClipboardList },
+  { href: "/changes", label: "Change Orders", icon: FilePlus2 },
+  { href: "/reports", label: "Daily Reports", icon: CalendarDays },
+  { href: "/bids", label: "Bid Comparison", icon: Scale },
+  { href: "/search", label: "Project Search", icon: Search },
   { href: "/automations", label: "Automations", icon: Workflow },
   { href: "/skills", label: "Skills", icon: Sparkles },
 ];

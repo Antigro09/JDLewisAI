@@ -1,36 +1,52 @@
 import type { InvoiceStatus } from "@/lib/db/schema";
 import { cn } from "@/lib/utils";
 
-const STYLES: Record<InvoiceStatus, string> = {
+const STYLES: Record<string, string> = {
   APPROVED: "bg-green-100 text-green-800 ring-green-300",
+  APPROVED_AS_NOTED: "bg-green-100 text-green-800 ring-green-300",
   NEEDS_REVIEW: "bg-amber-100 text-amber-800 ring-amber-300",
+  REVISE: "bg-amber-100 text-amber-800 ring-amber-300",
+  SUBMITTED: "bg-amber-100 text-amber-800 ring-amber-300",
+  ANSWERED: "bg-amber-100 text-amber-800 ring-amber-300",
   DENIED: "bg-red-100 text-red-800 ring-red-300",
+  REJECTED: "bg-red-100 text-red-800 ring-red-300",
   PENDING: "bg-neutral-100 text-neutral-600 ring-neutral-300",
+  DRAFT: "bg-neutral-100 text-neutral-600 ring-neutral-300",
+  OPEN: "bg-blue-100 text-blue-800 ring-blue-300",
+  CLOSED: "bg-neutral-100 text-neutral-600 ring-neutral-300",
 };
 
-const LABELS: Record<InvoiceStatus, string> = {
+const LABELS: Record<string, string> = {
   APPROVED: "Approved",
+  APPROVED_AS_NOTED: "Approved as Noted",
   NEEDS_REVIEW: "Needs Review",
+  REVISE: "Revise & Resubmit",
+  SUBMITTED: "Submitted",
+  ANSWERED: "Answered",
   DENIED: "Denied",
+  REJECTED: "Rejected",
   PENDING: "Pending",
+  DRAFT: "Draft",
+  OPEN: "Open",
+  CLOSED: "Closed",
 };
 
 export function StatusBadge({
   status,
   size = "sm",
 }: {
-  status: InvoiceStatus;
+  status: string;
   size?: "sm" | "lg";
 }) {
   return (
     <span
       className={cn(
         "inline-flex items-center rounded-full font-semibold uppercase tracking-wide ring-1",
-        STYLES[status],
+        STYLES[status] ?? "bg-neutral-100 text-neutral-600 ring-neutral-300",
         size === "lg" ? "px-3 py-1 text-sm" : "px-2 py-0.5 text-xs",
       )}
     >
-      {LABELS[status]}
+      {LABELS[status] ?? status}
     </span>
   );
 }
