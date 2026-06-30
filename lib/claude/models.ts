@@ -41,7 +41,7 @@ export const MODELS: ModelInfo[] = [
     blurb: "Balanced speed, cost, and intelligence.",
     efforts: ALL_EFFORTS,
     adaptiveThinking: true,
-    priceIn: 3,
+    priceIn: 2,
     priceOut: 10,
     enabled: true,
   },
