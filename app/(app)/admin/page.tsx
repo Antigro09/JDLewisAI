@@ -1,7 +1,7 @@
 import { desc, sql } from "drizzle-orm";
 import { requireAdmin } from "@/lib/auth/server";
 import { db } from "@/lib/db";
-import { users, usageEvents } from "@/lib/db/schema";
+import { users, usageEvents, automationRuns } from "@/lib/db/schema";
 import { PageShell } from "@/components/page-shell";
 import { Button, Card } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -20,18 +20,45 @@ export default async function AdminPage() {
   const admin = await requireAdmin();
 
   const allUsers = await db.select().from(users).orderBy(desc(users.createdAt));
-  const usageRows = await db
-    .select({
-      userId: usageEvents.userId,
-      cost: sql<number>`coalesce(sum(${usageEvents.costCents}),0)`,
-      inTok: sql<number>`coalesce(sum(${usageEvents.inputTokens}),0)`,
-      outTok: sql<number>`coalesce(sum(${usageEvents.outputTokens}),0)`,
-    })
-    .from(usageEvents)
-    .groupBy(usageEvents.userId);
+  const [usageRows, featureRows, totalRow, automationStats] = await Promise.all([
+    db
+      .select({
+        userId: usageEvents.userId,
+        cost: sql<number>`coalesce(sum(${usageEvents.costCents}),0)`,
+        inTok: sql<number>`coalesce(sum(${usageEvents.inputTokens}),0)`,
+        outTok: sql<number>`coalesce(sum(${usageEvents.outputTokens}),0)`,
+      })
+      .from(usageEvents)
+      .groupBy(usageEvents.userId),
+    db
+      .select({
+        feature: usageEvents.feature,
+        cost: sql<number>`coalesce(sum(${usageEvents.costCents}),0)`,
+        calls: sql<number>`count(*)`,
+      })
+      .from(usageEvents)
+      .groupBy(usageEvents.feature)
+      .orderBy(sql`sum(${usageEvents.costCents}) desc`),
+    db
+      .select({
+        totalCost: sql<number>`coalesce(sum(${usageEvents.costCents}),0)`,
+        totalIn: sql<number>`coalesce(sum(${usageEvents.inputTokens}),0)`,
+        totalOut: sql<number>`coalesce(sum(${usageEvents.outputTokens}),0)`,
+      })
+      .from(usageEvents),
+    db
+      .select({
+        status: automationRuns.status,
+        count: sql<number>`count(*)`,
+      })
+      .from(automationRuns)
+      .groupBy(automationRuns.status),
+  ]);
 
   const usageByUser = new Map(usageRows.map((u) => [u.userId, u]));
   const orgDefaults = await getOrgDefaults();
+  const grandTotal = totalRow[0];
+  const automationCounts = Object.fromEntries(automationStats.map((r) => [r.status, Number(r.count)]));
 
   return (
     <PageShell
@@ -39,6 +66,62 @@ export default async function AdminPage() {
       description="Oversee all employee accounts and AI usage."
     >
       <div className="space-y-6">
+
+      {/* Cost summary cards */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card className="p-4">
+          <div className="text-xs uppercase tracking-wide text-neutral-400">Total AI Spend</div>
+          <div className="mt-1 text-2xl font-bold text-neutral-900">
+            ${(Number(grandTotal?.totalCost ?? 0) / 100).toFixed(2)}
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs uppercase tracking-wide text-neutral-400">Total Tokens</div>
+          <div className="mt-1 text-2xl font-bold text-neutral-900">
+            {(Number(grandTotal?.totalIn ?? 0) + Number(grandTotal?.totalOut ?? 0)).toLocaleString()}
+          </div>
+          <div className="text-xs text-neutral-400">
+            {Number(grandTotal?.totalIn ?? 0).toLocaleString()} in / {Number(grandTotal?.totalOut ?? 0).toLocaleString()} out
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="text-xs uppercase tracking-wide text-neutral-400">Automation Runs</div>
+          <div className="mt-1 text-2xl font-bold text-neutral-900">
+            {((automationCounts.success ?? 0) + (automationCounts.error ?? 0) + (automationCounts.running ?? 0))}
+          </div>
+          <div className="text-xs text-neutral-400">
+            {automationCounts.success ?? 0} success / {automationCounts.error ?? 0} error
+          </div>
+        </Card>
+      </div>
+
+      {/* Usage by feature */}
+      {featureRows.length > 0 && (
+        <Card className="overflow-x-auto p-0">
+          <div className="border-b border-neutral-200 px-4 py-3">
+            <h2 className="font-semibold text-neutral-900">Cost by Feature</h2>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-400">
+                <th className="px-4 py-2">Feature</th>
+                <th className="px-4 py-2">Calls</th>
+                <th className="px-4 py-2">Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {featureRows.map((f) => (
+                <tr key={f.feature} className="border-b border-neutral-100">
+                  <td className="px-4 py-2 font-medium">{f.feature}</td>
+                  <td className="px-4 py-2 text-neutral-500">{Number(f.calls).toLocaleString()}</td>
+                  <td className="px-4 py-2">${(Number(f.cost) / 100).toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
+
       <Card className="p-6">
         <h2 className="font-semibold text-neutral-900">Plugin defaults (org-wide)</h2>
         <p className="mt-1 text-sm text-neutral-500">

@@ -286,6 +286,130 @@ export const pluginSettings = pgTable("plugin_settings", {
 });
 export type PluginSetting = typeof pluginSettings.$inferSelect;
 
+export type SubmittalStatus =
+  | "PENDING"
+  | "APPROVED"
+  | "APPROVED_AS_NOTED"
+  | "REVISE"
+  | "REJECTED";
+
+/** Submittal log entries (additional feature). */
+export const submittals = pgTable("submittals", {
+  id: id(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  projectId: text("project_id").references(() => projects.id, {
+    onDelete: "set null",
+  }),
+  specSection: text("spec_section"),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status")
+    .$type<SubmittalStatus>()
+    .notNull()
+    .default("PENDING"),
+  ballInCourt: text("ball_in_court"),
+  dueDate: text("due_date"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type Submittal = typeof submittals.$inferSelect;
+
+export type RfiStatus = "OPEN" | "ANSWERED" | "CLOSED";
+
+/** Request for Information log. */
+export const rfis = pgTable("rfis", {
+  id: id(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  projectId: text("project_id").references(() => projects.id, {
+    onDelete: "set null",
+  }),
+  rfiNumber: text("rfi_number"),
+  subject: text("subject").notNull(),
+  question: text("question").notNull(),
+  discipline: text("discipline"),
+  assignedTo: text("assigned_to"),
+  dueDate: text("due_date"),
+  status: text("status").$type<RfiStatus>().notNull().default("OPEN"),
+  response: text("response"),
+  generatedDraft: text("generated_draft"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type Rfi = typeof rfis.$inferSelect;
+
+export type ChangeOrderStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
+
+/** Change order drafts. */
+export const changeOrders = pgTable("change_orders", {
+  id: id(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  projectId: text("project_id").references(() => projects.id, {
+    onDelete: "set null",
+  }),
+  coNumber: text("co_number"),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  reason: text("reason"),
+  costImpact: text("cost_impact"),
+  scheduleImpact: text("schedule_impact"),
+  status: text("status")
+    .$type<ChangeOrderStatus>()
+    .notNull()
+    .default("DRAFT"),
+  generatedDraft: text("generated_draft"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type ChangeOrder = typeof changeOrders.$inferSelect;
+
+/** Daily construction site reports. */
+export const dailyReports = pgTable("daily_reports", {
+  id: id(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  projectId: text("project_id").references(() => projects.id, {
+    onDelete: "set null",
+  }),
+  reportDate: text("report_date").notNull(),
+  weather: text("weather"),
+  laborNotes: text("labor_notes"),
+  workPerformed: text("work_performed"),
+  issues: text("issues"),
+  generatedReport: text("generated_report"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type DailyReport = typeof dailyReports.$inferSelect;
+
+/** Bid / estimate comparison records. */
+export const bids = pgTable("bids", {
+  id: id(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  projectId: text("project_id").references(() => projects.id, {
+    onDelete: "set null",
+  }),
+  title: text("title").notNull(),
+  trade: text("trade"),
+  vendors: jsonb("vendors").$type<
+    { name: string; totalAmt: string; notes?: string }[]
+  >(),
+  analysis: text("analysis"),
+  recommendation: text("recommendation"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type Bid = typeof bids.$inferSelect;
+
 export type AppUser = typeof users.$inferSelect;
 export type Project = typeof projects.$inferSelect;
 export type Conversation = typeof conversations.$inferSelect;
