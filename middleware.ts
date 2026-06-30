@@ -11,11 +11,6 @@ export async function middleware(req: NextRequest) {
 
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
-  // Signed-in users shouldn't see login/signup.
-  if (claims && isPublic) {
-    return NextResponse.redirect(new URL("/chat", req.url));
-  }
-
   if (!claims && !isPublic) {
     const url = new URL("/login", req.url);
     url.searchParams.set("next", pathname);
