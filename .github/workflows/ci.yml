@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Dummy values so `prisma generate` and `next build` succeed without secrets.
+      DATABASE_URL: "postgresql://user:pass@localhost:5432/db"
+      DIRECT_URL: "postgresql://user:pass@localhost:5432/db"
+      AUTH_SECRET: "ci-placeholder-secret-ci-placeholder-secret"
+      ENCRYPTION_KEY: "Y2ktcGxhY2Vob2xkZXIta2V5LWNpLXBsYWNlaG9sZA=="
+      ANTHROPIC_API_KEY: "sk-ant-ci-placeholder"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
