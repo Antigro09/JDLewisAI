@@ -14,7 +14,13 @@ import {
   googleToolDefinitions,
   runGoogleTool,
 } from "@/lib/tools/google-tools";
+import {
+  getLocalTool,
+  localToolDefinitions,
+  runLocalTool,
+} from "@/lib/tools/local-tools";
 import { recordUsage } from "@/lib/usage";
+import { recordAudit } from "@/lib/audit";
 import { appendMessage, buildActivePath } from "@/lib/chat/branches";
 
 const MAX_STEPS = 8;
@@ -156,6 +162,9 @@ export async function* runAgentTurn(
   }
 
   const tools: unknown[] = [];
+  // Local construction tools (calculators, save_memory) are always available —
+  // pure compute, no external account needed.
+  tools.push(...localToolDefinitions());
   if (opts.googleEnabled) {
     let g = googleToolDefinitions();
     if (opts.toolNames) g = g.filter((d) => opts.toolNames!.includes(d.name));
@@ -282,7 +291,15 @@ export async function* runAgentTurn(
       const resultContent: ApiContentBlock[] = [];
       const resultBlocks: MessageBlock[] = [];
       for (const c of classified) {
-        const r = await runGoogleTool(opts.userId, c.name, c.input);
+        const r = getLocalTool(c.name)
+          ? await runLocalTool(opts.userId, c.name, c.input)
+          : await runGoogleTool(opts.userId, c.name, c.input);
+        await recordAudit({
+          userId: opts.userId,
+          action: `tool.${c.name}`,
+          detail: r.summary,
+          conversationId: opts.conversationId,
+        });
         resultContent.push({
           type: "tool_result",
           tool_use_id: c.id,
@@ -359,6 +376,12 @@ export async function* applyPendingDecisions(opts: {
       p.name,
       (p.input ?? {}) as Record<string, unknown>,
     );
+    await recordAudit({
+      userId: opts.userId,
+      action: `tool.${p.name}`,
+      detail: `Approved: ${r.summary}`,
+      conversationId: opts.conversationId,
+    });
     resultBlocks.push({
       type: "tool_result",
       toolUseId: p.id,

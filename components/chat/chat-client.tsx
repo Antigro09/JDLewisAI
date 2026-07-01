@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
-  Paperclip,
+  Plus,
   Send,
   X,
   Brain,
@@ -19,10 +20,21 @@ import {
   Pencil,
   Trash2,
   Check,
+  Mic,
+  AudioLines,
+  Image as ImageIcon,
+  FolderKanban,
+  Plug,
+  Blocks,
+  FileText,
+  ShieldCheck,
+  Users,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Markdown } from "@/components/markdown";
 import { Button, Card, Select, Spinner, Textarea } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { REASONING_MODES } from "@/lib/claude/modes";
 import { switchBranch, deleteMessage } from "@/app/(app)/chat/branch-actions";
 
 export type ModelOption = {
@@ -64,6 +76,19 @@ function readFileAsBase64(file: File): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+/** Light markdown → plain text for text-to-speech. */
+function stripMarkdown(s: string): string {
+  return s
+    .replace(/```[\s\S]*?```/g, " (code block) ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^[#>\-*+]\s+/gm, "")
+    .replace(/[*_~#]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function ThinkingBlock({ text }: { text: string }) {
@@ -109,7 +134,7 @@ function ActivityList({ activities }: { activities?: Activity[] }) {
               href={a.link}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline"
+              className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline dark:text-brand-400"
             >
               Open <ExternalLink size={12} />
             </a>
@@ -120,17 +145,14 @@ function ActivityList({ activities }: { activities?: Activity[] }) {
   );
 }
 
-function ModelEffortBar({
+/** Compact model + effort picker (bottom-right of the composer), opens upward. */
+function ModelPicker({
   models,
   model,
   effort,
   efforts,
   onModelChange,
   onEffortChange,
-  researchMode,
-  onToggleResearch,
-  webSearch,
-  onToggleWebSearch,
 }: {
   models: ModelOption[];
   model: string;
@@ -138,95 +160,74 @@ function ModelEffortBar({
   efforts: string[];
   onModelChange: (id: string) => void;
   onEffortChange: (effort: string) => void;
-  researchMode: boolean;
-  onToggleResearch: () => void;
-  webSearch: boolean;
-  onToggleWebSearch: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const currentModel = models.find((m) => m.id === model);
   const effortLabel = effort ? effort[0].toUpperCase() + effort.slice(1) : "";
 
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [open]);
+
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-2">
-      <div className="relative">
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+    <div className="relative">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+      >
+        {currentModel?.label ?? model}
+        {effortLabel && <span className="text-neutral-400">{effortLabel}</span>}
+        <ChevronDown size={12} />
+      </button>
+      {open && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute bottom-full right-0 z-20 mb-1 w-56 space-y-2 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-800"
         >
-          {currentModel?.label ?? model}
-          {effortLabel && <span className="text-neutral-400">{effortLabel}</span>}
-          <ChevronDown size={12} />
-        </button>
-        {open && (
-          <div className="absolute bottom-full left-0 z-10 mb-1 w-56 space-y-2 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-800">
+          <div>
+            <span className="mb-1 block text-[11px] font-medium uppercase text-neutral-400">
+              Model
+            </span>
+            <Select
+              value={model}
+              onChange={(e) => onModelChange(e.target.value)}
+              className="w-full"
+            >
+              {models.map((m) => (
+                <option key={m.id} value={m.id} disabled={!m.enabled}>
+                  {m.label}
+                  {!m.enabled ? " (unavailable)" : ""}
+                </option>
+              ))}
+            </Select>
+          </div>
+          {efforts.length > 0 && (
             <div>
               <span className="mb-1 block text-[11px] font-medium uppercase text-neutral-400">
-                Model
+                Effort
               </span>
               <Select
-                value={model}
-                onChange={(e) => onModelChange(e.target.value)}
+                value={effort}
+                onChange={(e) => onEffortChange(e.target.value)}
                 className="w-full"
               >
-                {models.map((m) => (
-                  <option key={m.id} value={m.id} disabled={!m.enabled}>
-                    {m.label}
-                    {!m.enabled ? " (unavailable)" : ""}
+                {efforts.map((e) => (
+                  <option key={e} value={e}>
+                    {e}
                   </option>
                 ))}
               </Select>
             </div>
-            {efforts.length > 0 && (
-              <div>
-                <span className="mb-1 block text-[11px] font-medium uppercase text-neutral-400">
-                  Effort
-                </span>
-                <Select
-                  value={effort}
-                  onChange={(e) => onEffortChange(e.target.value)}
-                  className="w-full"
-                >
-                  {efforts.map((e) => (
-                    <option key={e} value={e}>
-                      {e}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-      <button
-        type="button"
-        onClick={onToggleResearch}
-        title="Research mode: deeper multi-step investigation, web search, and citations"
-        className={cn(
-          "flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
-          researchMode
-            ? "border-brand-300 bg-brand-50 text-brand-700 dark:border-brand-700 dark:bg-brand-950 dark:text-brand-300"
-            : "border-neutral-200 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800",
-        )}
-      >
-        <Telescope size={13} />
-        Research
-      </button>
-      <button
-        type="button"
-        onClick={onToggleWebSearch}
-        title="Search the web for this message"
-        className={cn(
-          "flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors",
-          webSearch
-            ? "border-brand-300 bg-brand-50 text-brand-700 dark:border-brand-700 dark:bg-brand-950 dark:text-brand-300"
-            : "border-neutral-200 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800",
-        )}
-      >
-        <Globe size={13} />
-        Web Search
-      </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -245,6 +246,7 @@ export function ChatClient({
   availableSkills = [],
   initialActiveSkillIds = [],
   initialWebSearch = false,
+  savedPrompts = [],
 }: {
   conversationId: string | null;
   initialMessages: ChatMsg[];
@@ -259,6 +261,7 @@ export function ChatClient({
   availableSkills?: { id: string; name: string; scope: string }[];
   initialActiveSkillIds?: string[];
   initialWebSearch?: boolean;
+  savedPrompts?: { id: string; title: string; body: string }[];
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMsg[]>(initialMessages);
@@ -270,22 +273,57 @@ export function ChatClient({
   const [sending, setSending] = useState(false);
   const [pending, setPending] = useState<PendingTool[]>(initialPending);
   const [skillIds, setSkillIds] = useState<string[]>(initialActiveSkillIds);
-  const [skillsOpen, setSkillsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [researchMode, setResearchMode] = useState(false);
   const [webSearch, setWebSearch] = useState(initialWebSearch);
+  const [selfCheck, setSelfCheck] = useState(false);
+  const [mode, setMode] = useState("standard");
+  const [team, setTeam] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  // Composer "+" menu
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuSection, setMenuSection] = useState<
+    "project" | "skills" | "prompts" | "mode" | null
+  >(null);
+  // Voice
+  const [listening, setListening] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+
   const convIdRef = useRef<string | null>(conversationId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
+  const baseInputRef = useRef("");
+  const voiceModeRef = useRef(false);
 
   const currentModel = models.find((m) => m.id === model);
   const efforts = currentModel?.efforts ?? [];
+  const selectedProject = projects.find((p) => p.id === projectId) ?? null;
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, pending]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = () => {
+      setMenuOpen(false);
+      setMenuSection(null);
+    };
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [menuOpen]);
+
+  // Stop any in-flight speech / recognition on unmount.
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop?.();
+      if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+    };
+  }, []);
 
   function onModelChange(id: string) {
     setModel(id);
@@ -302,6 +340,65 @@ export function ChatClient({
     }
     setAttachments((prev) => [...prev, ...next]);
     if (fileRef.current) fileRef.current.value = "";
+  }
+
+  // --- Voice: dictation (speech-to-text) ---
+  function toggleListening() {
+    if (typeof window === "undefined") return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      setError("Voice input isn't supported in this browser.");
+      return;
+    }
+    if (listening) {
+      recognitionRef.current?.stop?.();
+      return;
+    }
+    const rec = new SR();
+    rec.lang = "en-US";
+    rec.interimResults = true;
+    rec.continuous = true;
+    baseInputRef.current = input ? input + " " : "";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onresult = (e: any) => {
+      let transcript = "";
+      for (let i = 0; i < e.results.length; i++) {
+        transcript += e.results[i][0].transcript;
+      }
+      setInput(baseInputRef.current + transcript);
+    };
+    rec.onend = () => {
+      setListening(false);
+      recognitionRef.current = null;
+    };
+    rec.onerror = () => setListening(false);
+    recognitionRef.current = rec;
+    rec.start();
+    setListening(true);
+  }
+
+  // --- Voice: read responses aloud (text-to-speech) ---
+  function speak(text: string) {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    const clean = stripMarkdown(text);
+    if (!clean) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(clean);
+    u.onstart = () => setSpeaking(true);
+    u.onend = () => setSpeaking(false);
+    u.onerror = () => setSpeaking(false);
+    window.speechSynthesis.speak(u);
+  }
+
+  function toggleVoiceMode() {
+    const next = !voiceMode;
+    setVoiceMode(next);
+    voiceModeRef.current = next;
+    if (!next && typeof window !== "undefined") {
+      window.speechSynthesis?.cancel();
+      setSpeaking(false);
+    }
   }
 
   function setLast(fn: (m: ChatMsg) => ChatMsg) {
@@ -322,6 +419,7 @@ export function ChatClient({
     const decoder = new TextDecoder();
     let buffer = "";
     let newId: string | null = null;
+    let assistantText = "";
 
     // eslint-disable-next-line no-constant-condition
     while (true) {
@@ -346,6 +444,7 @@ export function ChatClient({
             }
             break;
           case "text":
+            assistantText += String(ev.text);
             setLast((m) => ({ ...m, text: m.text + String(ev.text) }));
             break;
           case "thinking":
@@ -376,11 +475,13 @@ export function ChatClient({
     }
     setLast((m) => ({ ...m, streaming: false }));
     if (newId) window.history.replaceState({}, "", `/chat/${newId}`);
+    if (voiceModeRef.current && assistantText.trim()) speak(assistantText);
   }
 
   async function send() {
     const text = input.trim();
     if ((!text && attachments.length === 0) || sending) return;
+    if (listening) recognitionRef.current?.stop?.();
     setError(null);
     setPending([]);
     setSending(true);
@@ -413,6 +514,9 @@ export function ChatClient({
           skillIds,
           researchMode,
           webSearch,
+          selfCheck,
+          mode,
+          team,
         }),
       });
       await consumeResponse(res);
@@ -509,86 +613,23 @@ export function ChatClient({
   }
 
   const writes = pending.filter((p) => p.kind === "write");
+  const canSend = !sending && (input.trim().length > 0 || attachments.length > 0);
+
+  // A menu row + optional trailing check
+  const menuRowCls =
+    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-700/60";
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-neutral-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-900">
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-neutral-500 dark:text-neutral-400">Project</span>
-          <Select
-            value={projectId ?? ""}
-            disabled={lockProject}
-            onChange={(e) => setProjectId(e.target.value || null)}
-          >
-            <option value="">None</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        {availableSkills.length > 0 && (
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setSkillsOpen((o) => !o)}
-              className="flex items-center gap-1.5 rounded-lg border border-neutral-300 px-2 py-1.5 text-xs text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
-            >
-              <Sparkles size={14} />
-              Skills{skillIds.length ? ` (${skillIds.length})` : ""}
-            </button>
-            {skillsOpen && (
-              <div className="absolute z-10 mt-1 max-h-72 w-64 overflow-y-auto rounded-lg border border-neutral-200 bg-white p-2 shadow-lg dark:border-neutral-700 dark:bg-neutral-800">
-                {availableSkills.map((s) => (
-                  <label
-                    key={s.id}
-                    className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-neutral-50 dark:hover:bg-neutral-700"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={skillIds.includes(s.id)}
-                      onChange={(e) =>
-                        setSkillIds((prev) =>
-                          e.target.checked
-                            ? [...prev, s.id]
-                            : prev.filter((x) => x !== s.id),
-                        )
-                      }
-                    />
-                    <span className="flex-1 truncate dark:text-neutral-200">{s.name}</span>
-                    {s.scope === "org" && (
-                      <span className="text-[10px] text-blue-600 dark:text-blue-400">org</span>
-                    )}
-                  </label>
-                ))}
-                <p className="px-2 pt-1 text-[11px] text-neutral-400">
-                  Applied to this conversation.
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-        {!googleConnected && (
-          <a
-            href="/settings"
-            className="ml-auto rounded-full bg-brand-50 px-3 py-1 text-xs font-medium text-brand-700 hover:bg-brand-100 dark:bg-brand-950 dark:text-brand-300 dark:hover:bg-brand-900"
-          >
-            Connect Google →
-          </a>
-        )}
-      </div>
-
+    <div className="flex h-full flex-col bg-neutral-50 dark:bg-neutral-950">
       {/* Thread */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6">
         <div className="mx-auto max-w-3xl space-y-6">
           {messages.length === 0 && (
-            <div className="flex h-full flex-col items-center justify-center text-center text-neutral-400">
-              <p className="text-lg font-medium text-neutral-500 dark:text-neutral-300">
+            <div className="flex min-h-[40vh] flex-col items-center justify-center text-center text-neutral-400">
+              <p className="text-2xl font-medium text-neutral-500 dark:text-neutral-300">
                 How can I help with the project?
               </p>
-              <p className="mt-1 text-sm">
+              <p className="mt-2 text-sm">
                 Ask anything, attach a plan or invoice, generate a scope of work, or
                 {googleConnected
                   ? " create a Google Doc/Sheet."
@@ -746,7 +787,7 @@ export function ChatClient({
       </div>
 
       {/* Composer */}
-      <div className="border-t border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
+      <div className="px-4 pb-4 pt-1">
         <div className="mx-auto max-w-3xl">
           {error && (
             <p className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
@@ -758,7 +799,7 @@ export function ChatClient({
               {attachments.map((a, i) => (
                 <span
                   key={i}
-                  className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
+                  className="flex items-center gap-1 rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
                 >
                   {a.name}
                   <button onClick={() => setAttachments((prev) => prev.filter((_, j) => j !== i))}>
@@ -768,15 +809,17 @@ export function ChatClient({
               ))}
             </div>
           )}
-          <div className="flex items-end gap-2 rounded-2xl border border-neutral-300 bg-white p-2 focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-100 dark:border-neutral-700 dark:bg-neutral-900">
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="rounded-lg p-2 text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
-              title="Attach files"
-            >
-              <Paperclip size={18} />
-            </button>
+
+          <div className="rounded-3xl border border-neutral-300 bg-white px-3 pb-2 pt-3 shadow-sm transition-colors focus-within:border-brand-400 dark:border-neutral-700 dark:bg-neutral-900 dark:focus-within:border-brand-600">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={onKeyDown}
+              rows={1}
+              placeholder="Message ContractorAI…"
+              className="max-h-48 w-full resize-none bg-transparent px-1 text-sm outline-none placeholder:text-neutral-400 dark:text-neutral-100"
+            />
+
             <input
               ref={fileRef}
               type="file"
@@ -785,34 +828,361 @@ export function ChatClient({
               className="hidden"
               onChange={onPickFiles}
             />
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={onKeyDown}
-              rows={1}
-              placeholder="Message ContractorAI…"
-              className="max-h-40 flex-1 resize-none bg-transparent py-2 text-sm outline-none dark:text-neutral-100"
-            />
-            <Button
-              size="sm"
-              onClick={send}
-              disabled={sending || (!input.trim() && attachments.length === 0)}
-            >
-              {sending ? <Spinner className="border-white border-t-white/40" /> : <Send size={16} />}
-            </Button>
+
+            {/* Controls row */}
+            <div className="mt-1 flex items-center justify-between">
+              {/* Left: "+" menu */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen((o) => !o);
+                    setMenuSection(null);
+                  }}
+                  title="Add context & tools"
+                  className={cn(
+                    "flex h-8 w-8 items-center justify-center rounded-full border transition-colors",
+                    menuOpen
+                      ? "border-brand-300 bg-brand-50 text-brand-700 dark:border-brand-700 dark:bg-brand-950 dark:text-brand-300"
+                      : "border-neutral-300 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800",
+                  )}
+                >
+                  <Plus size={18} />
+                </button>
+
+                {menuOpen && (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute bottom-full left-0 z-20 mb-2 w-72 rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-800"
+                  >
+                    <button
+                      type="button"
+                      className={menuRowCls}
+                      onClick={() => {
+                        fileRef.current?.click();
+                        setMenuOpen(false);
+                      }}
+                    >
+                      <ImageIcon size={16} className="text-neutral-400" />
+                      <span className="flex-1">Add files or photos</span>
+                    </button>
+
+                    {!lockProject && projects.length > 0 && (
+                      <div>
+                        <button
+                          type="button"
+                          className={menuRowCls}
+                          onClick={() =>
+                            setMenuSection((s) => (s === "project" ? null : "project"))
+                          }
+                        >
+                          <FolderKanban size={16} className="text-neutral-400" />
+                          <span className="flex-1">
+                            Add to project
+                            {selectedProject && (
+                              <span className="ml-1 text-xs text-brand-600 dark:text-brand-400">
+                                · {selectedProject.name}
+                              </span>
+                            )}
+                          </span>
+                          <ChevronRight
+                            size={14}
+                            className={cn(
+                              "text-neutral-400 transition-transform",
+                              menuSection === "project" && "rotate-90",
+                            )}
+                          />
+                        </button>
+                        {menuSection === "project" && (
+                          <div className="mb-1 ml-8 mr-1 space-y-0.5 border-l border-neutral-200 pl-2 dark:border-neutral-700">
+                            <button
+                              type="button"
+                              onClick={() => setProjectId(null)}
+                              className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700/60"
+                            >
+                              <span className="flex-1">None</span>
+                              {projectId === null && <Check size={14} className="text-brand-600" />}
+                            </button>
+                            {projects.map((p) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => setProjectId(p.id)}
+                                className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700/60"
+                              >
+                                <span className="flex-1 truncate">{p.name}</span>
+                                {projectId === p.id && <Check size={14} className="text-brand-600" />}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {lockProject && selectedProject && (
+                      <div className="flex items-center gap-2.5 px-2.5 py-2 text-sm text-neutral-500 dark:text-neutral-400">
+                        <FolderKanban size={16} className="text-neutral-400" />
+                        Project: {selectedProject.name}
+                      </div>
+                    )}
+
+                    <div className="my-1 border-t border-neutral-100 dark:border-neutral-700" />
+
+                    {availableSkills.length > 0 && (
+                      <div>
+                        <button
+                          type="button"
+                          className={menuRowCls}
+                          onClick={() =>
+                            setMenuSection((s) => (s === "skills" ? null : "skills"))
+                          }
+                        >
+                          <Sparkles size={16} className="text-neutral-400" />
+                          <span className="flex-1">
+                            Skills
+                            {skillIds.length > 0 && (
+                              <span className="ml-1 text-xs text-brand-600 dark:text-brand-400">
+                                · {skillIds.length}
+                              </span>
+                            )}
+                          </span>
+                          <ChevronRight
+                            size={14}
+                            className={cn(
+                              "text-neutral-400 transition-transform",
+                              menuSection === "skills" && "rotate-90",
+                            )}
+                          />
+                        </button>
+                        {menuSection === "skills" && (
+                          <div className="mb-1 ml-8 mr-1 max-h-48 space-y-0.5 overflow-y-auto border-l border-neutral-200 pl-2 dark:border-neutral-700">
+                            {availableSkills.map((s) => (
+                              <label
+                                key={s.id}
+                                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700/60"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={skillIds.includes(s.id)}
+                                  onChange={(e) =>
+                                    setSkillIds((prev) =>
+                                      e.target.checked
+                                        ? [...prev, s.id]
+                                        : prev.filter((x) => x !== s.id),
+                                    )
+                                  }
+                                />
+                                <span className="flex-1 truncate">{s.name}</span>
+                                {s.scope === "org" && (
+                                  <span className="text-[10px] text-blue-600 dark:text-blue-400">org</span>
+                                )}
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {savedPrompts.length > 0 && (
+                      <div>
+                        <button
+                          type="button"
+                          className={menuRowCls}
+                          onClick={() =>
+                            setMenuSection((s) => (s === "prompts" ? null : "prompts"))
+                          }
+                        >
+                          <FileText size={16} className="text-neutral-400" />
+                          <span className="flex-1">Prompts</span>
+                          <ChevronRight
+                            size={14}
+                            className={cn(
+                              "text-neutral-400 transition-transform",
+                              menuSection === "prompts" && "rotate-90",
+                            )}
+                          />
+                        </button>
+                        {menuSection === "prompts" && (
+                          <div className="mb-1 ml-8 mr-1 max-h-48 space-y-0.5 overflow-y-auto border-l border-neutral-200 pl-2 dark:border-neutral-700">
+                            {savedPrompts.map((p) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => {
+                                  setInput((prev) => (prev ? prev + "\n\n" : "") + p.body);
+                                  setMenuOpen(false);
+                                  setMenuSection(null);
+                                }}
+                                className="block w-full truncate rounded px-2 py-1 text-left text-sm text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700/60"
+                                title={p.body}
+                              >
+                                {p.title}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <Link href="/customize?tab=connections" className={menuRowCls}>
+                      <Plug size={16} className="text-neutral-400" />
+                      <span className="flex-1">Connectors</span>
+                      {!googleConnected && (
+                        <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                          Connect
+                        </span>
+                      )}
+                      <ExternalLink size={13} className="text-neutral-400" />
+                    </Link>
+
+                    <Link href="/customize?tab=plugins" className={menuRowCls}>
+                      <Blocks size={16} className="text-neutral-400" />
+                      <span className="flex-1">Plugins</span>
+                      <ExternalLink size={13} className="text-neutral-400" />
+                    </Link>
+
+                    <div className="my-1 border-t border-neutral-100 dark:border-neutral-700" />
+
+                    <button
+                      type="button"
+                      className={menuRowCls}
+                      onClick={() => setResearchMode((r) => !r)}
+                    >
+                      <Telescope size={16} className={researchMode ? "text-brand-600" : "text-neutral-400"} />
+                      <span className="flex-1">Research</span>
+                      {researchMode && <Check size={16} className="text-brand-600" />}
+                    </button>
+                    <button
+                      type="button"
+                      className={menuRowCls}
+                      onClick={() => setWebSearch((w) => !w)}
+                    >
+                      <Globe size={16} className={webSearch ? "text-brand-600" : "text-neutral-400"} />
+                      <span className="flex-1">Web search</span>
+                      {webSearch && <Check size={16} className="text-brand-600" />}
+                    </button>
+                    <button
+                      type="button"
+                      className={menuRowCls}
+                      onClick={() => setSelfCheck((s) => !s)}
+                    >
+                      <ShieldCheck size={16} className={selfCheck ? "text-brand-600" : "text-neutral-400"} />
+                      <span className="flex-1">Self-check</span>
+                      {selfCheck && <Check size={16} className="text-brand-600" />}
+                    </button>
+                    <button
+                      type="button"
+                      className={menuRowCls}
+                      onClick={() => setTeam((t) => !t)}
+                    >
+                      <Users size={16} className={team ? "text-brand-600" : "text-neutral-400"} />
+                      <span className="flex-1">
+                        Team mode
+                        <span className="ml-1 text-[10px] text-neutral-400">multi-agent</span>
+                      </span>
+                      {team && <Check size={16} className="text-brand-600" />}
+                    </button>
+
+                    <div className="my-1 border-t border-neutral-100 dark:border-neutral-700" />
+
+                    <div>
+                      <button
+                        type="button"
+                        className={menuRowCls}
+                        onClick={() => setMenuSection((s) => (s === "mode" ? null : "mode"))}
+                      >
+                        <SlidersHorizontal size={16} className="text-neutral-400" />
+                        <span className="flex-1">
+                          Mode
+                          <span className="ml-1 text-xs text-brand-600 dark:text-brand-400">
+                            · {REASONING_MODES.find((m) => m.id === mode)?.label ?? "Standard"}
+                          </span>
+                        </span>
+                        <ChevronRight
+                          size={14}
+                          className={cn(
+                            "text-neutral-400 transition-transform",
+                            menuSection === "mode" && "rotate-90",
+                          )}
+                        />
+                      </button>
+                      {menuSection === "mode" && (
+                        <div className="mb-1 ml-8 mr-1 max-h-56 space-y-0.5 overflow-y-auto border-l border-neutral-200 pl-2 dark:border-neutral-700">
+                          {REASONING_MODES.map((m) => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => setMode(m.id)}
+                              className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700/60"
+                            >
+                              <span className="flex-1">{m.label}</span>
+                              {mode === m.id && <Check size={14} className="text-brand-600" />}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Right: model picker + voice + send */}
+              <div className="flex items-center gap-1">
+                <ModelPicker
+                  models={models}
+                  model={model}
+                  effort={effort}
+                  efforts={efforts}
+                  onModelChange={onModelChange}
+                  onEffortChange={setEffort}
+                />
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  title={listening ? "Stop dictation" : "Dictate (speech to text)"}
+                  className={cn(
+                    "flex h-8 w-8 items-center justify-center rounded-full transition-colors",
+                    listening
+                      ? "bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400"
+                      : "text-neutral-500 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
+                  )}
+                >
+                  <Mic size={17} className={listening ? "animate-pulse" : ""} />
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleVoiceMode}
+                  title={voiceMode ? "Voice replies on (read responses aloud)" : "Read responses aloud"}
+                  className={cn(
+                    "flex h-8 w-8 items-center justify-center rounded-full transition-colors",
+                    voiceMode
+                      ? "bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+                      : "text-neutral-500 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
+                  )}
+                >
+                  <AudioLines size={17} className={speaking ? "animate-pulse" : ""} />
+                </button>
+                <button
+                  type="button"
+                  onClick={send}
+                  disabled={!canSend}
+                  title="Send"
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-white transition-colors hover:bg-brand-700 disabled:opacity-40"
+                >
+                  {sending ? <Spinner className="border-white border-t-white/40" /> : <Send size={16} />}
+                </button>
+              </div>
+            </div>
           </div>
-          <ModelEffortBar
-            models={models}
-            model={model}
-            effort={effort}
-            efforts={efforts}
-            onModelChange={onModelChange}
-            onEffortChange={setEffort}
-            researchMode={researchMode}
-            onToggleResearch={() => setResearchMode((r) => !r)}
-            webSearch={webSearch}
-            onToggleWebSearch={() => setWebSearch((w) => !w)}
-          />
+
+          {!googleConnected && (
+            <p className="mt-2 text-center text-xs text-neutral-400">
+              <Link href="/customize?tab=connections" className="text-brand-600 hover:underline dark:text-brand-400">
+                Connect Google
+              </Link>{" "}
+              to create real Docs, Sheets & send email from chat.
+            </p>
+          )}
         </div>
       </div>
     </div>

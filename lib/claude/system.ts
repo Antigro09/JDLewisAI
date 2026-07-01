@@ -35,16 +35,29 @@ using every available tool (including web search) before answering — don't set
 result. Cross-check claims across multiple sources where it matters, cite sources/links for any
 external facts, and clearly note where information is uncertain or conflicting.`;
 
+export const SELF_CHECK_NOTE = `Self-check is ON for this message. Before giving your final answer,
+review your own work: check it against any provided specifications, drawings, standards, and the
+remembered company context; look for missing scope, conflicting requirements, arithmetic errors,
+and unstated assumptions. Then present the corrected FINAL answer, and end with a short "Self-check"
+note listing what you verified and anything you flagged.`;
+
+export const CONFIDENCE_NOTE = `For any recommendation, estimate, or factual claim, include a
+confidence level (High / Medium / Low) and cite the basis — e.g. the spec section, drawing/detail,
+manufacturer document, code reference, or remembered company standard. When confidence is Low or a
+required input is missing, say so and ask for clarification rather than guessing.`;
+
 export function buildSystemPrompt(opts: {
   personalization?: Personalization | null;
   projectName?: string | null;
   projectInstructions?: string | null;
   googleEnabled?: boolean;
   skillsPrompt?: string;
+  memoryPrompt?: string;
 }): string {
   const parts = [BASE_SYSTEM];
 
   if (opts.googleEnabled) parts.push(GOOGLE_TOOLS_NOTE);
+  if (opts.memoryPrompt) parts.push(opts.memoryPrompt);
   if (opts.skillsPrompt) parts.push(opts.skillsPrompt);
 
   if (opts.personalization) {

@@ -11,6 +11,7 @@ import {
 import { MODELS, DEFAULT_MODEL, getModel } from "@/lib/claude/models";
 import { buildSystemPrompt } from "@/lib/claude/system";
 import { resolveActiveSkills, buildSkillsPrompt } from "@/lib/skills";
+import { listMemories, buildMemoryPrompt } from "@/lib/memory";
 import { buildActivePath, getSiblings } from "@/lib/chat/branches";
 import type { ModelOption } from "@/components/chat/chat-client";
 
@@ -171,6 +172,8 @@ export async function buildChatSystem(
     activeSkills.map((s) => ({ name: s.name, instructions: s.instructions })),
   );
 
+  const memoryPrompt = buildMemoryPrompt(await listMemories(user));
+
   if (conv.projectId) {
     const proj = (
       await db.select().from(projects).where(eq(projects.id, conv.projectId))
@@ -209,5 +212,6 @@ export async function buildChatSystem(
     projectInstructions,
     googleEnabled,
     skillsPrompt,
+    memoryPrompt,
   });
 }
