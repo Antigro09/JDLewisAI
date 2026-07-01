@@ -11,19 +11,28 @@ import { runAgentTurn } from "@/lib/claude/agent";
 import { resolveModel } from "@/lib/claude/models";
 import { isGoogleConnected } from "@/lib/google/client";
 import { effectivePlugins } from "@/lib/plugins";
-import { AUTOMATION_TOOL_NAMES } from "@/lib/tools/google-tools";
+import { automationToolNames } from "@/lib/tools/google-tools";
 import { BASE_SYSTEM, GOOGLE_TOOLS_NOTE } from "@/lib/claude/system";
 import { listMemories, buildMemoryPrompt } from "@/lib/memory";
 import { truncate } from "@/lib/utils";
 import { createNotification, maybeSendEmailNotification } from "@/lib/notifications";
 import { recordAudit } from "@/lib/audit";
 
-const AUTOMATION_NOTE = `You are running as an UNATTENDED AUTOMATION on behalf of the user. No human
-is available to confirm actions, so complete the task end-to-end using your tools. You may read
+const AUTOMATION_NOTE_DRAFT = `You are running as an UNATTENDED AUTOMATION on behalf of the user. No
+human is available to confirm actions, so complete the task end-to-end using your tools. You may read
 Gmail and Drive, create and edit Google Docs & Sheets, and create Gmail DRAFTS — but you CANNOT
 send email. Avoid duplicate work: only process items created or received since the last run.
 Finish with a single concise sentence summarizing exactly what you did (or that there was nothing
 to do).`;
+
+const AUTOMATION_NOTE_SEND = `You are running as an UNATTENDED AUTOMATION on behalf of the user. No
+human is available to confirm actions, so complete the task end-to-end using your tools. You may read
+Gmail and Drive, create and edit Google Docs & Sheets, draft emails, and — because the user has
+explicitly authorized this automation to do so — SEND email on their behalf. Only send email when
+the task clearly calls for it; otherwise prefer a draft. Be careful with recipients and content
+since sends cannot be undone. Avoid duplicate work: only process items created or received since the
+last run. Finish with a single concise sentence summarizing exactly what you did (or that there was
+nothing to do).`;
 
 /** Execute one automation: run the agent headlessly and record the result. */
 export async function runAutomation(automationId: string): Promise<void> {
@@ -92,7 +101,7 @@ Only process items since the last run to avoid duplicates. Complete the task now
     BASE_SYSTEM,
     googleEnabled ? GOOGLE_TOOLS_NOTE : "",
     memoryPrompt,
-    AUTOMATION_NOTE,
+    auto.allowSend ? AUTOMATION_NOTE_SEND : AUTOMATION_NOTE_DRAFT,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -109,7 +118,7 @@ Only process items since the last run to avoid duplicates. Complete the task now
       googleEnabled,
       webSearch,
       autoApprove: true,
-      toolNames: AUTOMATION_TOOL_NAMES,
+      toolNames: automationToolNames(auto.allowSend),
       usageFeature: "automation",
     })) {
       if (ev.type === "text") summary += ev.text;

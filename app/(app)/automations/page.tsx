@@ -28,7 +28,7 @@ export default async function AutomationsPage() {
   return (
     <PageShell
       title="Automations"
-      description="Describe a recurring task in plain language. It runs on a schedule using your Google connection — reading mail/files, updating sheets, drafting emails. (Automations never send email.)"
+      description="Describe a recurring task in plain language. It runs on a schedule using your Google connection — reading mail/files, updating sheets, drafting (and, if you allow it, sending) emails."
     >
       {!googleConnected && (
         <div className="mb-6 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -95,9 +95,19 @@ export default async function AutomationsPage() {
                 ))}
               </Select>
             </div>
-            <label className="flex items-center gap-2 text-sm text-neutral-700">
+            <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">
               <input type="checkbox" name="enabled" defaultChecked />
               Enable immediately
+            </label>
+            <label className="flex items-start gap-2 text-sm text-neutral-700 dark:text-neutral-300">
+              <input type="checkbox" name="allowSend" className="mt-0.5" />
+              <span>
+                Allow sending email
+                <span className="mt-0.5 block text-xs text-neutral-400">
+                  Off by default, this automation only drafts emails. Turn on to let it send
+                  email unattended — no confirmation, so use with care.
+                </span>
+              </span>
             </label>
             <SubmitButton>Create automation</SubmitButton>
           </form>
