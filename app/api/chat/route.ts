@@ -11,8 +11,10 @@ import { effectivePlugins } from "@/lib/plugins";
 import { buildChatSystem } from "@/lib/data";
 import { truncate } from "@/lib/utils";
 import { RESEARCH_MODE_NOTE, SELF_CHECK_NOTE } from "@/lib/claude/system";
+import { getMode } from "@/lib/claude/modes";
 import { appendMessage } from "@/lib/chat/branches";
 import { streamAgentTurn } from "@/lib/chat/run-turn";
+import { runOrchestration } from "@/lib/agents/orchestrate";
 import { recordAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
@@ -32,6 +34,8 @@ type Body = {
   researchMode?: boolean;
   webSearch?: boolean;
   selfCheck?: boolean;
+  mode?: string;
+  team?: boolean;
 };
 
 export async function POST(req: Request) {
@@ -162,11 +166,50 @@ export async function POST(req: Request) {
     { projectId: conv?.projectId ?? null, skillIds: activeSkillIds },
     googleEnabled,
   );
+  const mode = getMode(body.mode);
+  if (mode?.note) system = `${system}\n\n${mode.note}`;
   if (researchMode) system = `${system}\n\n${RESEARCH_MODE_NOTE}`;
   if (body.selfCheck) system = `${system}\n\n${SELF_CHECK_NOTE}`;
 
   const conversationId = convId;
   const convTitle = conv?.title ?? truncate(message, 50);
+
+  // Team mode: route this turn through the multi-agent orchestrator.
+  if (body.team) {
+    const encoder = new TextEncoder();
+    const teamStream = new ReadableStream({
+      async start(controller) {
+        const send = (obj: unknown) =>
+          controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+        send({ type: "meta", conversationId, isNew, title: convTitle });
+        try {
+          for await (const ev of runOrchestration({
+            userId: user.id,
+            conversationId,
+            model: model.id,
+            effort,
+            baseSystem: system,
+            message,
+            attachments,
+          })) {
+            send(ev);
+          }
+        } catch (err) {
+          send({
+            type: "error",
+            message: err instanceof Error ? err.message : "Team run failed",
+          });
+        }
+        controller.close();
+      },
+    });
+    return new Response(teamStream, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+      },
+    });
+  }
 
   const stream = streamAgentTurn({
     agentOptions: {

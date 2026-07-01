@@ -28,10 +28,13 @@ import {
   Blocks,
   FileText,
   ShieldCheck,
+  Users,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Markdown } from "@/components/markdown";
 import { Button, Card, Select, Spinner, Textarea } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { REASONING_MODES } from "@/lib/claude/modes";
 import { switchBranch, deleteMessage } from "@/app/(app)/chat/branch-actions";
 
 export type ModelOption = {
@@ -274,11 +277,15 @@ export function ChatClient({
   const [researchMode, setResearchMode] = useState(false);
   const [webSearch, setWebSearch] = useState(initialWebSearch);
   const [selfCheck, setSelfCheck] = useState(false);
+  const [mode, setMode] = useState("standard");
+  const [team, setTeam] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   // Composer "+" menu
   const [menuOpen, setMenuOpen] = useState(false);
-  const [menuSection, setMenuSection] = useState<"project" | "skills" | "prompts" | null>(null);
+  const [menuSection, setMenuSection] = useState<
+    "project" | "skills" | "prompts" | "mode" | null
+  >(null);
   // Voice
   const [listening, setListening] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
@@ -508,6 +515,8 @@ export function ChatClient({
           researchMode,
           webSearch,
           selfCheck,
+          mode,
+          team,
         }),
       });
       await consumeResponse(res);
@@ -1061,6 +1070,58 @@ export function ChatClient({
                       <span className="flex-1">Self-check</span>
                       {selfCheck && <Check size={16} className="text-brand-600" />}
                     </button>
+                    <button
+                      type="button"
+                      className={menuRowCls}
+                      onClick={() => setTeam((t) => !t)}
+                    >
+                      <Users size={16} className={team ? "text-brand-600" : "text-neutral-400"} />
+                      <span className="flex-1">
+                        Team mode
+                        <span className="ml-1 text-[10px] text-neutral-400">multi-agent</span>
+                      </span>
+                      {team && <Check size={16} className="text-brand-600" />}
+                    </button>
+
+                    <div className="my-1 border-t border-neutral-100 dark:border-neutral-700" />
+
+                    <div>
+                      <button
+                        type="button"
+                        className={menuRowCls}
+                        onClick={() => setMenuSection((s) => (s === "mode" ? null : "mode"))}
+                      >
+                        <SlidersHorizontal size={16} className="text-neutral-400" />
+                        <span className="flex-1">
+                          Mode
+                          <span className="ml-1 text-xs text-brand-600 dark:text-brand-400">
+                            · {REASONING_MODES.find((m) => m.id === mode)?.label ?? "Standard"}
+                          </span>
+                        </span>
+                        <ChevronRight
+                          size={14}
+                          className={cn(
+                            "text-neutral-400 transition-transform",
+                            menuSection === "mode" && "rotate-90",
+                          )}
+                        />
+                      </button>
+                      {menuSection === "mode" && (
+                        <div className="mb-1 ml-8 mr-1 max-h-56 space-y-0.5 overflow-y-auto border-l border-neutral-200 pl-2 dark:border-neutral-700">
+                          {REASONING_MODES.map((m) => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => setMode(m.id)}
+                              className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700/60"
+                            >
+                              <span className="flex-1">{m.label}</span>
+                              {mode === m.id && <Check size={14} className="text-brand-600" />}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
