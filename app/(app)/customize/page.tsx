@@ -19,6 +19,7 @@ import {
   removeMemory,
   addPrompt,
   removePrompt,
+  installBuiltinSkills,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -165,6 +166,20 @@ export default async function CustomizePage({
                 Create one manually →
               </Link>
             </p>
+            {isAdmin && (
+              <div className="mt-4 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+                <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">
+                  Install the built-in construction workflow skills (punch list, meeting
+                  minutes, quantity takeoff, safety plan, VE, material order, submittal
+                  review, schedule recovery, drawing comparison) org-wide.
+                </p>
+                <form action={installBuiltinSkills}>
+                  <SubmitButton size="sm" variant="secondary">
+                    Install built-in skills
+                  </SubmitButton>
+                </form>
+              </div>
+            )}
           </Card>
 
           <div className="space-y-3">

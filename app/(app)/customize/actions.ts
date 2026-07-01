@@ -2,12 +2,13 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { googleAccounts, skills, skillFiles } from "@/lib/db/schema";
-import { requireUser } from "@/lib/auth/server";
+import { requireUser, requireAdmin } from "@/lib/auth/server";
 import { PLUGINS, setUserPlugin } from "@/lib/plugins";
 import { parseSkillMd } from "@/lib/skills/parse-skill-md";
+import { BUILTIN_SKILLS } from "@/lib/skills/builtin";
 import { createMemory, deleteMemory, MEMORY_CATEGORIES } from "@/lib/memory";
 import { createPrompt, deletePrompt } from "@/lib/prompts";
 import type { MemoryCategory } from "@/lib/db/schema";
@@ -141,5 +142,31 @@ export async function addPrompt(formData: FormData) {
 export async function removePrompt(id: string) {
   const user = await requireUser();
   await deletePrompt(user.id, id);
+  revalidatePath("/customize");
+}
+
+/** Install the built-in construction workflow skills org-wide (admin only),
+ * skipping any already present by name. Idempotent. */
+export async function installBuiltinSkills() {
+  const admin = await requireAdmin();
+  const names = BUILTIN_SKILLS.map((s) => s.name);
+  const existing = await db
+    .select({ name: skills.name })
+    .from(skills)
+    .where(and(eq(skills.scope, "org"), inArray(skills.name, names)));
+  const have = new Set(existing.map((e) => e.name));
+  const toInsert = BUILTIN_SKILLS.filter((s) => !have.has(s.name));
+  if (toInsert.length > 0) {
+    await db.insert(skills).values(
+      toInsert.map((s) => ({
+        ownerId: admin.id,
+        scope: "org" as const,
+        name: s.name,
+        description: s.description,
+        instructions: s.instructions,
+        defaultActive: false,
+      })),
+    );
+  }
   revalidatePath("/customize");
 }
