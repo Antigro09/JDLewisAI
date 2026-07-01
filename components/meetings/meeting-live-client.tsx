@@ -49,6 +49,8 @@ type Bundle = {
       currentDiscussion?: string;
       meetingStage?: string;
       confidence?: number;
+      categories?: string[];
+      relatedKnowledge?: { label: string; detail?: string; refType?: string; source?: string }[];
     } | null;
   };
   project: { name: string } | null;
@@ -542,6 +544,46 @@ export function MeetingLiveClient({ initialBundle }: { initialBundle: Bundle }) 
           </div>
         </Card>
       </div>
+
+      {(state?.categories?.length || state?.relatedKnowledge?.length) && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {state?.categories?.length ? (
+            <Card className="p-4">
+              <div className="text-xs uppercase text-neutral-400">Detected topics</div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {state.categories.map((c) => (
+                  <span
+                    key={c}
+                    className="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
+                  >
+                    {c.replace(/_/g, " ")}
+                  </span>
+                ))}
+              </div>
+            </Card>
+          ) : null}
+          {state?.relatedKnowledge?.length ? (
+            <Card className="p-4">
+              <div className="text-xs uppercase text-neutral-400">Surfaced company knowledge</div>
+              <ul className="mt-2 space-y-1 text-sm text-neutral-700 dark:text-neutral-200">
+                {state.relatedKnowledge.slice(0, 6).map((k, i) => (
+                  <li key={i} className="flex items-start gap-1.5">
+                    <span className="mt-1 text-neutral-400">📎</span>
+                    <span>
+                      {k.label}
+                      {k.refType && (
+                        <span className="ml-1 text-xs text-neutral-400">
+                          · {k.refType.replace(/_/g, " ")}
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          ) : null}
+        </div>
+      )}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr),minmax(360px,0.8fr)]">
         <div className="space-y-5">
