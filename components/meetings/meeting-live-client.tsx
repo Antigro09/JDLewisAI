@@ -123,10 +123,12 @@ export function MeetingLiveClient({
   initialBundle,
   googleConnected = false,
   speakerProfiles = [],
+  autoStart = false,
 }: {
   initialBundle: Bundle;
   googleConnected?: boolean;
   speakerProfiles?: { id: string; displayName: string }[];
+  autoStart?: boolean;
 }) {
   const [bundle, setBundle] = useState(initialBundle);
   const [speakerLabel, setSpeakerLabel] = useState("Speaker A");
@@ -201,6 +203,16 @@ export function MeetingLiveClient({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-begin capture when opened from desktop auto-detect (?autostart=1).
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current) return;
+    if (!["active", "processing"].includes(bundle.meeting.status)) return;
+    autoStartedRef.current = true;
+    void startLiveTranscription();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart]);
 
   async function flushAudioQueue() {
     if (flushingRef.current) return;
