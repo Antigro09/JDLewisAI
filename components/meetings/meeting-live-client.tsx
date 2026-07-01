@@ -197,6 +197,39 @@ export function MeetingLiveClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bundle.meeting.id, bundle.meeting.status]);
 
+  // Automatic note-taking: while a meeting is being transcribed, periodically run
+  // the full analysis so action items, decisions, risks and notes populate on
+  // their own — no one has to click "Analyze". Runs silently (doesn't block the
+  // UI) and only when enough new transcript has arrived.
+  const segCountRef = useRef(bundle.segments.length);
+  useEffect(() => {
+    segCountRef.current = bundle.segments.length;
+  }, [bundle.segments.length]);
+  const lastAutoAnalyzedRef = useRef(0);
+  const autoAnalyzingRef = useRef(false);
+  useEffect(() => {
+    async function autoAnalyze() {
+      if (autoAnalyzingRef.current) return;
+      autoAnalyzingRef.current = true;
+      try {
+        await fetch(`/api/meetings/${bundle.meeting.id}/analyze`, { method: "POST" });
+        lastAutoAnalyzedRef.current = segCountRef.current;
+        await refresh();
+      } catch {
+        // best-effort; will retry next interval
+      } finally {
+        autoAnalyzingRef.current = false;
+      }
+    }
+    const t = window.setInterval(() => {
+      if (!liveActiveRef.current) return;
+      if (segCountRef.current - lastAutoAnalyzedRef.current < 4) return;
+      void autoAnalyze();
+    }, 120_000);
+    return () => window.clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bundle.meeting.id]);
+
   useEffect(() => {
     return () => {
       stopAllAudioCapture();
