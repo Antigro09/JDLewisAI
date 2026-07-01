@@ -8,6 +8,9 @@ import { googleAccounts, skills, skillFiles } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/server";
 import { PLUGINS, setUserPlugin } from "@/lib/plugins";
 import { parseSkillMd } from "@/lib/skills/parse-skill-md";
+import { createMemory, deleteMemory, MEMORY_CATEGORIES } from "@/lib/memory";
+import { createPrompt, deletePrompt } from "@/lib/prompts";
+import type { MemoryCategory } from "@/lib/db/schema";
 
 export async function disconnectGoogle() {
   const user = await requireUser();
@@ -102,4 +105,41 @@ export async function createSkillFromMarkdown(
   }
 
   redirect("/customize?tab=skills");
+}
+
+export async function addMemory(formData: FormData) {
+  const user = await requireUser();
+  const content = String(formData.get("content") ?? "").trim();
+  if (!content) return;
+  const catRaw = String(formData.get("category") ?? "other");
+  const category = (MEMORY_CATEGORIES.some((c) => c.id === catRaw)
+    ? catRaw
+    : "other") as MemoryCategory;
+  const scope =
+    user.role === "ADMIN" && formData.get("scope") === "org" ? "org" : "personal";
+  await createMemory({ ownerId: user.id, scope, category, content });
+  revalidatePath("/customize");
+}
+
+export async function removeMemory(id: string) {
+  const user = await requireUser();
+  await deleteMemory(user.id, id);
+  revalidatePath("/customize");
+}
+
+export async function addPrompt(formData: FormData) {
+  const user = await requireUser();
+  const title = String(formData.get("title") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim();
+  if (!title || !body) return;
+  const scope =
+    user.role === "ADMIN" && formData.get("scope") === "org" ? "org" : "personal";
+  await createPrompt({ ownerId: user.id, scope, title, body });
+  revalidatePath("/customize");
+}
+
+export async function removePrompt(id: string) {
+  const user = await requireUser();
+  await deletePrompt(user.id, id);
+  revalidatePath("/customize");
 }

@@ -13,6 +13,7 @@ import { isGoogleConnected } from "@/lib/google/client";
 import { effectivePlugins } from "@/lib/plugins";
 import { AUTOMATION_TOOL_NAMES } from "@/lib/tools/google-tools";
 import { BASE_SYSTEM, GOOGLE_TOOLS_NOTE } from "@/lib/claude/system";
+import { listMemories, buildMemoryPrompt } from "@/lib/memory";
 import { truncate } from "@/lib/utils";
 import { createNotification, maybeSendEmailNotification } from "@/lib/notifications";
 
@@ -85,9 +86,11 @@ Only process items since the last run to avoid duplicates. Complete the task now
     blocks: [{ type: "text", text: context }],
   });
 
+  const memoryPrompt = buildMemoryPrompt(await listMemories(owner));
   const system = [
     BASE_SYSTEM,
     googleEnabled ? GOOGLE_TOOLS_NOTE : "",
+    memoryPrompt,
     AUTOMATION_NOTE,
   ]
     .filter(Boolean)

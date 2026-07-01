@@ -304,6 +304,45 @@ export const skillFiles = pgTable("skill_files", {
 });
 export type SkillFile = typeof skillFiles.$inferSelect;
 
+export type MemoryCategory =
+  | "standard"
+  | "preference"
+  | "vendor"
+  | "material"
+  | "method"
+  | "lesson"
+  | "project"
+  | "other";
+
+/** Long-term memory (Phase 6): durable facts the AI recalls in every chat —
+ * company standards, preferred subs/materials, writing style, lessons, etc.
+ * Personal (owner-scoped) or org-wide (admin-managed). */
+export const memories = pgTable("memories", {
+  id: id(),
+  ownerId: text("owner_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  scope: text("scope").$type<"personal" | "org">().notNull().default("personal"),
+  category: text("category").$type<MemoryCategory>().notNull().default("other"),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type Memory = typeof memories.$inferSelect;
+
+/** Reusable saved prompts / workflows (Phase 6), inserted into chat with one click. */
+export const prompts = pgTable("prompts", {
+  id: id(),
+  ownerId: text("owner_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  scope: text("scope").$type<"personal" | "org">().notNull().default("personal"),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type Prompt = typeof prompts.$inferSelect;
+
 /** Per-user / org capability (plugin) toggles (Phase 4). */
 export const pluginSettings = pgTable("plugin_settings", {
   id: id(),

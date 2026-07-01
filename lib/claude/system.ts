@@ -41,10 +41,12 @@ export function buildSystemPrompt(opts: {
   projectInstructions?: string | null;
   googleEnabled?: boolean;
   skillsPrompt?: string;
+  memoryPrompt?: string;
 }): string {
   const parts = [BASE_SYSTEM];
 
   if (opts.googleEnabled) parts.push(GOOGLE_TOOLS_NOTE);
+  if (opts.memoryPrompt) parts.push(opts.memoryPrompt);
   if (opts.skillsPrompt) parts.push(opts.skillsPrompt);
 
   if (opts.personalization) {

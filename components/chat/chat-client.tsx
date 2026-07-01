@@ -26,6 +26,7 @@ import {
   FolderKanban,
   Plug,
   Blocks,
+  FileText,
 } from "lucide-react";
 import { Markdown } from "@/components/markdown";
 import { Button, Card, Select, Spinner, Textarea } from "@/components/ui";
@@ -241,6 +242,7 @@ export function ChatClient({
   availableSkills = [],
   initialActiveSkillIds = [],
   initialWebSearch = false,
+  savedPrompts = [],
 }: {
   conversationId: string | null;
   initialMessages: ChatMsg[];
@@ -255,6 +257,7 @@ export function ChatClient({
   availableSkills?: { id: string; name: string; scope: string }[];
   initialActiveSkillIds?: string[];
   initialWebSearch?: boolean;
+  savedPrompts?: { id: string; title: string; body: string }[];
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMsg[]>(initialMessages);
@@ -273,7 +276,7 @@ export function ChatClient({
   const [editText, setEditText] = useState("");
   // Composer "+" menu
   const [menuOpen, setMenuOpen] = useState(false);
-  const [menuSection, setMenuSection] = useState<"project" | "skills" | null>(null);
+  const [menuSection, setMenuSection] = useState<"project" | "skills" | "prompts" | null>(null);
   // Voice
   const [listening, setListening] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
@@ -962,6 +965,47 @@ export function ChatClient({
                                   <span className="text-[10px] text-blue-600 dark:text-blue-400">org</span>
                                 )}
                               </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {savedPrompts.length > 0 && (
+                      <div>
+                        <button
+                          type="button"
+                          className={menuRowCls}
+                          onClick={() =>
+                            setMenuSection((s) => (s === "prompts" ? null : "prompts"))
+                          }
+                        >
+                          <FileText size={16} className="text-neutral-400" />
+                          <span className="flex-1">Prompts</span>
+                          <ChevronRight
+                            size={14}
+                            className={cn(
+                              "text-neutral-400 transition-transform",
+                              menuSection === "prompts" && "rotate-90",
+                            )}
+                          />
+                        </button>
+                        {menuSection === "prompts" && (
+                          <div className="mb-1 ml-8 mr-1 max-h-48 space-y-0.5 overflow-y-auto border-l border-neutral-200 pl-2 dark:border-neutral-700">
+                            {savedPrompts.map((p) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => {
+                                  setInput((prev) => (prev ? prev + "\n\n" : "") + p.body);
+                                  setMenuOpen(false);
+                                  setMenuSection(null);
+                                }}
+                                className="block w-full truncate rounded px-2 py-1 text-left text-sm text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700/60"
+                                title={p.body}
+                              >
+                                {p.title}
+                              </button>
                             ))}
                           </div>
                         )}
