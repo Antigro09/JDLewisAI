@@ -11,11 +11,14 @@ export const dynamic = "force-dynamic";
 
 export default async function MeetingDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ autostart?: string }>;
 }) {
   const user = await requireUser();
   const { id } = await params;
+  const { autostart } = await searchParams;
   const bundle = await loadMeetingBundle(user, id);
   if (!bundle) notFound();
   const [googleConnected, profiles] = await Promise.all([
@@ -37,6 +40,7 @@ export default async function MeetingDetailPage({
           initialBundle={JSON.parse(JSON.stringify(bundle))}
           googleConnected={googleConnected}
           speakerProfiles={profiles.map((p) => ({ id: p.id, displayName: p.displayName }))}
+          autoStart={autostart === "1"}
         />
       </div>
     </div>

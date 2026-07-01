@@ -39,7 +39,7 @@ export default async function MeetingsPage() {
   return (
     <PageShell
       title="Meeting Intelligence"
-      description="Capture live construction meetings, extract decisions, risks, action items, and generate branded minutes."
+      description="Meetings are detected and recorded automatically on the desktop app (recording is covered by the employee agreement). Extracts decisions, risks, action items, and generates branded minutes."
     >
       <div className="grid gap-6 lg:grid-cols-[360px,1fr]">
         <Card className="p-5">
@@ -70,13 +70,12 @@ export default async function MeetingsPage() {
                 ))}
               </Select>
             </div>
-            <label className="flex items-start gap-2 text-sm text-neutral-600 dark:text-neutral-300">
-              <input name="consentConfirmed" type="checkbox" className="mt-1" />
-              <span>
-                Recording consent has been confirmed. Transcript-first mode stores meeting
-                text and extracted intelligence; raw audio remains off by default.
-              </span>
-            </label>
+            <input name="consentConfirmed" type="hidden" value="on" />
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              Recording is authorized under the employee agreement. On the desktop app,
+              meetings are detected and start recording automatically; you can also start one
+              here manually. Transcript-first by default.
+            </p>
             <label className="flex items-start gap-2 text-sm text-neutral-600 dark:text-neutral-300">
               <input name="rawAudioEnabled" type="checkbox" className="mt-1" />
               <span>Store raw audio when the native capture adapter is enabled.</span>

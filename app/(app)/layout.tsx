@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth/server";
 import { Sidebar } from "@/components/sidebar";
 import { ThemeSync } from "@/components/theme-sync";
+import { MeetingAutoStart } from "@/components/meetings/meeting-auto-start";
 
 export default async function AppLayout({
   children,
@@ -11,6 +12,7 @@ export default async function AppLayout({
   return (
     <div className="flex h-screen overflow-hidden">
       <ThemeSync initialTheme={user.personalization?.darkMode} />
+      <MeetingAutoStart />
       <Sidebar
         user={{ name: user.name, email: user.email, role: user.role }}
       />
