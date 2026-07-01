@@ -208,9 +208,11 @@ attendees/projects/action-items/decisions, no duplicates, consistent formatting,
 language) and either passes or sends one revision loop back to Minutes.
 
 ### §15 Export
-Markdown / HTML / email summary / action-item CSV already exist. We add **real `.docx`** (the
-`docx` npm library, not HTML-with-a-`.doc`-extension) and **real PDF** (Playwright/Chromium — which
-is already provisioned in this environment — rendering the branded HTML → PDF).
+Markdown / HTML / email summary already exist. Instead of generating Word/Excel files, we reuse the
+platform's existing **Google connection**: minutes export to a real **Google Doc** and action items
+to a real **Google Sheet** (via the existing `docsCreate`/`sheetsCreate` wrappers), returning the
+Drive links. **PDF** stays as branded print-to-PDF from the existing `/print` view. This avoids
+binary document generation entirely and keeps everything in the tools the team already uses.
 
 ### §16 Live Dashboard
 Transcript, current speaker, detected project, action items, risks, decisions, a meeting timeline,
@@ -332,7 +334,7 @@ run in the worker/microservice, matched via pgvector cosine.
 | Vector DB | **pgvector on Neon** (Qdrant later) | One datastore first |
 | Caching / live state / pub-sub | **Redis (Upstash)** | Live state fan-out, gateway restarts |
 | WebSockets | **Gateway WS** (or Ably/Pusher managed) | Vercel can't hold sockets |
-| Document generation | **`docx`** + **Playwright→PDF** (Chromium already present) | Real Word/PDF, no heavy new dep |
+| Document generation | **Google Docs/Sheets** (existing connection) + print-to-PDF | Reuse the team's tools; no binary generation |
 | State management | Redis (server truth) + Zustand/React (client) | Clear ownership |
 | Background workers | **Inngest** or **BullMQ on Redis** | Durable finalize jobs + retries |
 
@@ -435,15 +437,26 @@ run in the worker/microservice, matched via pgvector cosine.
 
 ---
 
-## 12. Open questions for approval
+## 12. Confirmed decisions & open questions
 
-1. **Realtime hosting:** OK to run the Gateway on Railway/Fly/Render (needed for true live at
-   scale), or must everything stay on Vercel (then live streaming remains single-instance/demo-only)?
-2. **Voiceprints:** proceed with biometric enrollment (needs a consent/compliance stance), or ship
+**Confirmed:**
+- **Hosting: our own server, not Vercel.** This is a major simplification: the app runs as a
+  long-lived Node process, so it can hold persistent WebSockets and live meeting state **in-process**.
+  The dedicated Realtime Gateway becomes an *optional scale-out* (shard when one box isn't enough)
+  rather than a hard requirement — the current in-memory session map is acceptable for a single
+  server, and Redis is only needed once we run more than one app instance. This removes the biggest
+  blocker in the original design.
+- **Desktop app is a first-class channel.** The Electron build is distributable now, so desktop
+  detection + WASAPI system-audio loopback is the primary capture path (not a "future" item).
+- **Export = Google Docs/Sheets** via the existing Google connection (no Word/Excel generation).
+
+**Still open:**
+1. **Voiceprints:** proceed with biometric enrollment (needs a consent/compliance stance), or ship
    manual "name this speaker & remember" only for now?
-3. **Semantic memory:** enable pgvector on Neon (needs the extension + an embeddings provider), or
-   stay on Postgres FTS for v1?
-4. **Cost posture:** default model tiers (Haiku live / Sonnet finalize) and "no raw audio at rest"
+2. **Semantic memory:** enable pgvector (needs the extension + an embeddings provider), or stay on
+   Postgres FTS for v1?
+3. **Cost posture:** default model tiers (Haiku live / Sonnet finalize) and "no raw audio at rest"
    acceptable?
 
-Phase A is safe to implement immediately regardless of the answers above; B–D depend on them.
+Phase A is implemented. On-server hosting means the realtime path (B) no longer needs external
+infra — it can be built directly on the app server next.

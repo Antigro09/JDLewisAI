@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { requireUser } from "@/lib/auth/server";
 import { loadMeetingBundle } from "@/lib/meetings/access";
+import { isGoogleConnected } from "@/lib/google/client";
 import { MeetingLiveClient } from "@/components/meetings/meeting-live-client";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,7 @@ export default async function MeetingDetailPage({
   const { id } = await params;
   const bundle = await loadMeetingBundle(user, id);
   if (!bundle) notFound();
+  const googleConnected = await isGoogleConnected(user.id);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -27,7 +29,10 @@ export default async function MeetingDetailPage({
           <ChevronLeft size={16} />
           Meetings
         </Link>
-        <MeetingLiveClient initialBundle={JSON.parse(JSON.stringify(bundle))} />
+        <MeetingLiveClient
+          initialBundle={JSON.parse(JSON.stringify(bundle))}
+          googleConnected={googleConnected}
+        />
       </div>
     </div>
   );
