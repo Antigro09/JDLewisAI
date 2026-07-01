@@ -304,6 +304,7 @@ export function ChatClient({
   const baseInputRef = useRef("");
   const voiceChatRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   // Live mic waveform
   const audioCtxRef = useRef<AudioContext | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -340,6 +341,7 @@ export function ChatClient({
       recognitionRef.current?.stop?.();
       abortRef.current?.abort();
       stopWaveform();
+      audioRef.current?.pause();
       if (typeof window !== "undefined") window.speechSynthesis?.cancel();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -461,23 +463,67 @@ export function ChatClient({
     }
   }
 
-  // --- Text-to-speech ---
-  function speak(text: string, onEnd?: () => void) {
-    if (typeof window === "undefined" || !window.speechSynthesis) {
-      onEnd?.();
-      return;
+  // --- Text-to-speech: high-quality server voice, browser fallback ---
+  function stopAudio() {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
     }
-    const clean = stripMarkdown(text);
-    if (!clean) {
+    if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+  }
+
+  function browserSpeak(clean: string, onEnd?: () => void) {
+    if (typeof window === "undefined" || !window.speechSynthesis) {
       onEnd?.();
       return;
     }
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(clean);
-    u.onstart = () => setVoiceStatus("speaking");
     u.onend = () => onEnd?.();
     u.onerror = () => onEnd?.();
     window.speechSynthesis.speak(u);
+  }
+
+  async function speak(text: string, onEnd?: () => void) {
+    const clean = stripMarkdown(text);
+    if (!clean) {
+      onEnd?.();
+      return;
+    }
+    setVoiceStatus("speaking");
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      onEnd?.();
+    };
+    try {
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: clean }),
+      });
+      if (!res.ok) throw new Error("tts unavailable");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        if (audioRef.current === audio) audioRef.current = null;
+        finish();
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        if (audioRef.current === audio) audioRef.current = null;
+        finish();
+      };
+      await audio.play();
+    } catch {
+      // Not configured / network / autoplay blocked → browser voice.
+      audioRef.current = null;
+      browserSpeak(clean, finish);
+    }
   }
 
   // --- Voice conversation (hands-free: listen → send → speak → repeat) ---
@@ -547,7 +593,7 @@ export function ChatClient({
     setVoiceChat(false);
     recognitionRef.current?.stop?.();
     recognitionRef.current = null;
-    if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+    stopAudio();
     setLiveTranscript("");
   }
 
