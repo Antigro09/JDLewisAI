@@ -60,8 +60,9 @@ function escapeHtml(s: string) {
     .replace(/"/g, "&quot;");
 }
 
-export function actionItemsCsv(bundle: Bundle) {
-  const rows = [
+/** Action items as a 2D grid, header row first — for Google Sheets export. */
+export function actionItemsRows(bundle: Bundle): (string | number)[][] {
+  return [
     ["Owner", "Task", "Priority", "Due Date", "Status", "Confidence"],
     ...bundle.actionItems.map((a) => [
       a.ownerName ?? "",
@@ -72,7 +73,12 @@ export function actionItemsCsv(bundle: Bundle) {
       `${a.confidence}%`,
     ]),
   ];
-  return rows.map((r) => r.map(csvCell).join(",")).join("\n");
+}
+
+export function actionItemsCsv(bundle: Bundle) {
+  return actionItemsRows(bundle)
+    .map((r) => r.map(csvCell).join(","))
+    .join("\n");
 }
 
 export function meetingToMarkdown(bundle: Bundle) {

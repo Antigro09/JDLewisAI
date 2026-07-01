@@ -118,7 +118,13 @@ function floatToPcm16(input: Float32Array) {
   return out;
 }
 
-export function MeetingLiveClient({ initialBundle }: { initialBundle: Bundle }) {
+export function MeetingLiveClient({
+  initialBundle,
+  googleConnected = false,
+}: {
+  initialBundle: Bundle;
+  googleConnected?: boolean;
+}) {
   const [bundle, setBundle] = useState(initialBundle);
   const [speakerLabel, setSpeakerLabel] = useState("Speaker A");
   const [speakerName, setSpeakerName] = useState("");
@@ -417,7 +423,9 @@ export function MeetingLiveClient({ initialBundle }: { initialBundle: Bundle }) 
     }
   }
 
-  async function exportFormat(format: "markdown" | "html" | "word" | "csv" | "email" | "json" | "pdf") {
+  async function exportFormat(
+    format: "markdown" | "html" | "email" | "json" | "pdf" | "gdoc" | "gsheet",
+  ) {
     setBusy(`export-${format}`);
     setError(null);
     try {
@@ -431,12 +439,18 @@ export function MeetingLiveClient({ initialBundle }: { initialBundle: Bundle }) 
         if (json.printUrl) window.open(json.printUrl, "_blank", "noreferrer");
         return;
       }
+      if (format === "gdoc" || format === "gsheet") {
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error || "Google export failed");
+        if (json.link) window.open(json.link, "_blank", "noreferrer");
+        return;
+      }
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
         throw new Error(json.error || "Export failed");
       }
       const blob = await res.blob();
-      const ext = format === "word" ? "doc" : format === "markdown" ? "md" : format === "csv" ? "csv" : format === "email" ? "txt" : format;
+      const ext = format === "markdown" ? "md" : format === "email" ? "txt" : format;
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -732,7 +746,7 @@ export function MeetingLiveClient({ initialBundle }: { initialBundle: Bundle }) 
               Export
             </h2>
             <div className="grid grid-cols-2 gap-2">
-              {(["markdown", "word", "html", "csv", "email", "json", "pdf"] as const).map((f) => (
+              {(["gdoc", "gsheet", "markdown", "html", "email", "json", "pdf"] as const).map((f) => (
                 <Button
                   key={f}
                   variant="secondary"
@@ -740,10 +754,19 @@ export function MeetingLiveClient({ initialBundle }: { initialBundle: Bundle }) 
                   onClick={() => exportFormat(f)}
                   disabled={Boolean(busy)}
                 >
-                  {f === "csv" ? "Actions CSV" : f.toUpperCase()}
+                  {f === "gdoc"
+                    ? "Google Doc"
+                    : f === "gsheet"
+                      ? "Actions Sheet"
+                      : f.toUpperCase()}
                 </Button>
               ))}
             </div>
+            {!googleConnected && (
+              <p className="mt-2 text-xs text-neutral-400">
+                Connect Google in Settings to export minutes to Docs and action items to Sheets.
+              </p>
+            )}
             <Link
               href={`/print/meeting-minutes/${bundle.meeting.id}`}
               className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"

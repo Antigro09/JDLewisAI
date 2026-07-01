@@ -4,16 +4,22 @@ import { meetingArtifacts } from "@/lib/db/schema";
 import { getCurrentUser } from "@/lib/auth/server";
 import { loadMeetingBundle } from "@/lib/meetings/access";
 import {
-  actionItemsCsv,
+  actionItemsRows,
   meetingEmailSummary,
   meetingToHtml,
   meetingToMarkdown,
 } from "@/lib/meetings/export";
+import { getValidAccessToken, GoogleNotConnectedError } from "@/lib/google/client";
+import { docsCreate } from "@/lib/google/docs";
+import { sheetsCreate } from "@/lib/google/sheets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Format = "markdown" | "html" | "word" | "csv" | "email" | "json" | "pdf";
+// Word/Excel downloads were dropped in favor of the app's existing Google
+// connection: minutes export to a real Google Doc, action items to a Google
+// Sheet. Plain downloads (markdown/html/email/json) and print-to-PDF remain.
+type Format = "markdown" | "html" | "email" | "json" | "pdf" | "gdoc" | "gsheet";
 
 function filename(title: string, ext: string) {
   const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -42,9 +48,61 @@ export async function POST(
     return NextResponse.json({ printUrl: `/print/meeting-minutes/${id}` });
   }
 
+  // Google exports create real Drive files and return their links.
+  if (format === "gdoc" || format === "gsheet") {
+    let token: string;
+    try {
+      token = await getValidAccessToken(user.id);
+    } catch (err) {
+      if (err instanceof GoogleNotConnectedError) {
+        return NextResponse.json(
+          { error: "Connect Google in Settings to export to Docs & Sheets." },
+          { status: 400 },
+        );
+      }
+      throw err;
+    }
+
+    try {
+      if (format === "gdoc") {
+        const { link } = await docsCreate(
+          token,
+          `${bundle.meeting.title} — Minutes`,
+          meetingToMarkdown(bundle),
+        );
+        await db.insert(meetingArtifacts).values({
+          meetingId: id,
+          type: "minutes",
+          title: `${bundle.meeting.title} Google Doc`,
+          mime: "application/vnd.google-apps.document",
+          content: link,
+        });
+        return NextResponse.json({ link });
+      }
+      const { link } = await sheetsCreate(
+        token,
+        `${bundle.meeting.title} — Action Items`,
+        actionItemsRows(bundle),
+      );
+      await db.insert(meetingArtifacts).values({
+        meetingId: id,
+        type: "spreadsheet",
+        title: `${bundle.meeting.title} Google Sheet`,
+        mime: "application/vnd.google-apps.spreadsheet",
+        content: link,
+      });
+      return NextResponse.json({ link });
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Google export failed" },
+        { status: 502 },
+      );
+    }
+  }
+
   const variants: Record<
-    Exclude<Format, "pdf">,
-    { content: string; mime: string; ext: string; type: "minutes" | "html" | "word" | "spreadsheet" | "email" }
+    Exclude<Format, "pdf" | "gdoc" | "gsheet">,
+    { content: string; mime: string; ext: string; type: "minutes" | "html" | "email" }
   > = {
     markdown: {
       content: meetingToMarkdown(bundle),
@@ -57,18 +115,6 @@ export async function POST(
       mime: "text/html; charset=utf-8",
       ext: "html",
       type: "html",
-    },
-    word: {
-      content: meetingToHtml(bundle),
-      mime: "application/msword; charset=utf-8",
-      ext: "doc",
-      type: "word",
-    },
-    csv: {
-      content: actionItemsCsv(bundle),
-      mime: "text/csv; charset=utf-8",
-      ext: "csv",
-      type: "spreadsheet",
     },
     email: {
       content: meetingEmailSummary(bundle),
@@ -83,7 +129,7 @@ export async function POST(
       type: "minutes",
     },
   };
-  const selected = variants[format] ?? variants.markdown;
+  const selected = variants[format as keyof typeof variants] ?? variants.markdown;
   await db.insert(meetingArtifacts).values({
     meetingId: id,
     type: selected.type,
