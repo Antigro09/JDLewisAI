@@ -4,12 +4,20 @@ import {
   meetingParticipants,
   meetingSessions,
   transcriptSegments,
+  type MeetingState,
 } from "@/lib/db/schema";
 import {
   getTranscriptionProvider,
   type TranscriptEvent,
   type TranscriptionSession,
 } from "@/lib/meetings/transcription";
+import { runClassifierAgent } from "@/lib/meetings/agents/classifier";
+import { transcriptText } from "@/lib/meetings/access";
+import type { AgentContext } from "@/lib/meetings/agents/base";
+
+const LIVE_MODEL = "claude-haiku-4-5-20251001";
+const TICK_EVERY_FINALS = 6;
+const TICK_MIN_INTERVAL_MS = 15_000;
 
 type LiveMeetingSession = {
   meetingId: string;
@@ -19,6 +27,9 @@ type LiveMeetingSession = {
   transcription: TranscriptionSession;
   lastPartial?: TranscriptEvent;
   startedAt: Date;
+  finalsSinceTick: number;
+  lastTickAt: number;
+  ticking: boolean;
 };
 
 declare global {
@@ -96,6 +107,81 @@ async function persistFinal(meetingId: string, event: TranscriptEvent) {
     .where(eq(meetingSessions.id, meetingId));
 }
 
+/**
+ * Incremental live analysis (spec §5/§16). Every few final turns (and no more
+ * than once per 15s) run the cheap Classifier agent over recent transcript and
+ * patch the live meeting state so the dashboard keeps updating during the
+ * meeting. Fully guarded — a failure here never affects transcription.
+ */
+function maybeRunLiveTick(meetingId: string) {
+  const session = sessions().get(meetingId);
+  if (!session) return;
+  session.finalsSinceTick += 1;
+  const now = Date.now();
+  if (session.ticking) return;
+  if (session.finalsSinceTick < TICK_EVERY_FINALS) return;
+  if (now - session.lastTickAt < TICK_MIN_INTERVAL_MS) return;
+  session.ticking = true;
+  session.finalsSinceTick = 0;
+  session.lastTickAt = now;
+  void runLiveTick(meetingId).finally(() => {
+    const s = sessions().get(meetingId);
+    if (s) s.ticking = false;
+  });
+}
+
+async function runLiveTick(meetingId: string) {
+  try {
+    const meeting = (
+      await db.select().from(meetingSessions).where(eq(meetingSessions.id, meetingId)).limit(1)
+    )[0];
+    if (!meeting) return;
+
+    const segments = await db
+      .select({
+        speakerName: transcriptSegments.speakerName,
+        speakerLabel: transcriptSegments.speakerLabel,
+        text: transcriptSegments.text,
+        startMs: transcriptSegments.startMs,
+      })
+      .from(transcriptSegments)
+      .where(eq(transcriptSegments.meetingId, meetingId))
+      .orderBy(desc(transcriptSegments.sequence))
+      .limit(40);
+    if (segments.length === 0) return;
+    const transcript = transcriptText([...segments].reverse());
+
+    const ctx: AgentContext = {
+      userId: meeting.ownerId,
+      meetingId,
+      companyId: meeting.companyId,
+      projectId: meeting.projectId,
+      meetingTitle: meeting.title,
+      linkedProjectName: null,
+      knownProjects: "None",
+      transcript,
+      liveModel: LIVE_MODEL,
+    };
+    const c = await runClassifierAgent(ctx);
+
+    const prev: MeetingState = meeting.state ?? {};
+    const next: MeetingState = {
+      ...prev,
+      currentTopic: c.currentTopic || prev.currentTopic,
+      meetingStage: c.meetingStage || prev.meetingStage,
+      categories: c.categories,
+      confidence: c.confidence,
+      updatedAt: new Date().toISOString(),
+    };
+    await db
+      .update(meetingSessions)
+      .set({ state: next, summary: c.gist || meeting.summary, updatedAt: new Date() })
+      .where(eq(meetingSessions.id, meetingId));
+  } catch {
+    // live tick is best-effort
+  }
+}
+
 export async function startLiveMeetingTranscription(opts: {
   meetingId: string;
   provider?: string;
@@ -116,6 +202,9 @@ export async function startLiveMeetingTranscription(opts: {
     sampleRate,
     channels,
     startedAt: new Date(),
+    finalsSinceTick: 0,
+    lastTickAt: 0,
+    ticking: false,
   };
   const transcription = await provider.startSession({
     meetingId: opts.meetingId,
@@ -124,7 +213,10 @@ export async function startLiveMeetingTranscription(opts: {
     onPartial: (event) => {
       live.lastPartial = event;
     },
-    onFinal: (event) => persistFinal(opts.meetingId, event),
+    onFinal: async (event) => {
+      await persistFinal(opts.meetingId, event);
+      maybeRunLiveTick(opts.meetingId);
+    },
   });
   const session: LiveMeetingSession = {
     ...(live as Omit<LiveMeetingSession, "transcription">),

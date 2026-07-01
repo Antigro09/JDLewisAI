@@ -8,6 +8,7 @@ import {
 } from "@/lib/db/schema";
 import { getCurrentUser } from "@/lib/auth/server";
 import { ensureCompanyForUser } from "@/lib/meetings/access";
+import { semanticSearchMeetings } from "@/lib/meetings/memory";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -81,8 +82,33 @@ export async function POST(req: Request) {
     .orderBy(desc(sql`ts_rank(${eventVector}, ${tsquery})`), desc(meetingEvents.createdAt))
     .limit(25);
 
+  // Semantic (pgvector) hits — empty when embeddings aren't configured.
+  const semantic = await semanticSearchMeetings(company.id, query, 15);
+  const titleFor = new Map<string, string>();
+  [...transcriptMatches, ...eventMatches].forEach((r) =>
+    titleFor.set(r.meetingId, r.meetingTitle),
+  );
+  const seen = new Set<string>();
+  const semanticResults = semantic
+    .filter((h) => {
+      const key = `${h.meetingId}:${h.content}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((h) => ({
+      meetingId: h.meetingId,
+      meetingTitle: titleFor.get(h.meetingId) ?? "Meeting",
+      type: h.sourceType,
+      text: h.content,
+      createdAt: null as Date | null,
+      source: "semantic",
+      score: h.score,
+    }));
+
   return NextResponse.json({
     results: [
+      ...semanticResults,
       ...transcriptMatches.map((r) => ({
         meetingId: r.meetingId,
         meetingTitle: r.meetingTitle,
@@ -99,6 +125,6 @@ export async function POST(req: Request) {
         createdAt: r.createdAt,
         source: "event",
       })),
-    ].slice(0, 50),
+    ].slice(0, 60),
   });
 }

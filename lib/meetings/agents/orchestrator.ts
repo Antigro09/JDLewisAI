@@ -13,6 +13,8 @@ import {
 } from "@/lib/db/schema";
 import { loadMeetingBundle, transcriptText } from "@/lib/meetings/access";
 import { meetingToMarkdown } from "@/lib/meetings/export";
+import { createNotification } from "@/lib/notifications";
+import { truncate } from "@/lib/utils";
 import { text, clampConfidence, type AgentContext } from "./base";
 import { runClassifierAgent } from "./classifier";
 import { runProjectDetectionAgent } from "./project";
@@ -156,6 +158,22 @@ export async function analyzeMeeting(user: AppUser, meetingId: string) {
     .update(meetingSessions)
     .set({ state, summary, updatedAt: new Date() })
     .where(eq(meetingSessions.id, meetingId));
+
+  // Close the loop: flag high-severity risks to the meeting owner (spec §11).
+  const highRisks = riskRows.filter((r) => r.severity === "high");
+  if (highRisks.length) {
+    try {
+      await createNotification({
+        userId: bundle.meeting.ownerId,
+        kind: "error",
+        title: `${highRisks.length} high-priority risk${highRisks.length > 1 ? "s" : ""} in ${bundle.meeting.title}`,
+        body: truncate(highRisks.map((r) => r.description).join("; "), 300),
+        link: `/meetings/${meetingId}`,
+      });
+    } catch {
+      // notifications are best-effort
+    }
+  }
 
   return {
     events: eventRows,

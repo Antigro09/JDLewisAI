@@ -409,31 +409,37 @@ run in the worker/microservice, matched via pgvector cosine.
 
 ---
 
-## 11. Phased roadmap
+## 11. Phased roadmap & implementation status
 
-**Phase A — Foundation & correctness (in this PR, in-repo, verifiable now)**
-- Fix the build (`@types/ws`, typed callbacks).
-- Replace the single-prompt analyzer with the **real modular agent pipeline** (Planner + specialists
-  + Minutes + QA) in `lib/meetings/agents/*`.
-- **Memory** = Postgres full-text search (ranked, person/project filters) — no new dependency.
-- **RAG-lite** = Memory/RAG agent retrieves from existing `project_files`/RFIs/submittals/prior
-  meetings and attaches surfaced references.
-- Keep browser capture + AssemblyAI streaming; document the serverless-safe path for live.
+**Phase A — Foundation & correctness — ✅ DONE**
+- Fixed the build; real modular agent pipeline (Planner + specialists + Minutes + QA);
+  FTS memory; RAG-lite from existing records; browser capture + AssemblyAI streaming.
 
-**Phase B — MVP realtime (needs the Gateway + Redis)**
-- Stand up the Node Gateway (WS) + Upstash Redis; move live sessions out of the app process.
-- Live agent loop + push dashboard; real `.docx`/PDF export; enrollment UI (manual mapping).
-- Inngest/BullMQ finalize queue.
+**Phase B — Realtime & close-the-loop — ✅ DONE (in-repo; runs on our own server)**
+- Live sessions run **in-process** (own-server hosting) — no separate Gateway needed at current
+  scale; the AssemblyAI WebSocket relay + audio POST path is live.
+- **Incremental live analysis:** the Classifier agent runs every few final turns (debounced) and
+  patches live meeting state, so the dashboard updates continuously during the meeting.
+- Export to **Google Docs/Sheets** (shipped); **risks → notifications** close-the-loop (shipped).
 
-**Phase C — Production (speaker ID + semantic memory + scale)**
-- Diarization/speaker-ID microservice (pyannote/NeMo) + pgvector voiceprints + auto-ID with
-  "ask once."
-- pgvector semantic memory + hybrid (FTS+vector) retrieval; transcript partitioning.
-- Native WASAPI sidecar; consent/compliance module; notification/automation loop-closing.
+**Phase C — Speaker ID + semantic memory — ✅ DONE (software); ⛏ hardware/service pending**
+- **Speaker identification:** manual assignment that writes names onto the transcript and
+  remembers people as company speaker profiles; **voiceprint auto-ID** wired end-to-end
+  (`speaker_profiles.embedding` + cosine match with accept/ask/unknown bands) — activates when
+  `VOICEPRINT_EMBED_URL` points at a speaker-embedding service.
+- **Semantic memory:** **pgvector** column + HNSW cosine index; transcript/items embedded on
+  meeting end; **hybrid FTS + vector** search. Activates when embeddings are configured + the
+  `vector` extension is installed; otherwise degrades to FTS.
 
-**Phase D — Enterprise (scale-out & governance)**
-- Gateway sharding + autoscale; multi-region; per-tenant retention/DLP; SSO/audit exports;
-  Deepgram/self-host Whisper cost levers; analytics dashboards; macOS support.
+**⛏ Remaining — needs hardware / an external service (can't live in this repo):**
+- **Native WASAPI loopback (desktop system audio).** Capturing *other participants'* audio on
+  Windows requires a native binary talking to the OS audio stack (WASAPI loopback) — a small
+  Rust/C++ sidecar shipped with the Electron app, compiled per-platform (Windows now, macOS via
+  ScreenCaptureKit later). It can't be built or tested in a Linux CI container; it needs a Windows
+  build/sign/test machine. The Electron shell already exposes the IPC seam (`audio:*` handlers) —
+  the sidecar plugs into it. Until then, browser `getDisplayMedia` tab-audio is the capture path.
+- **Speaker-embedding service** (pyannote/NeMo, GPU) — the app calls it via `VOICEPRINT_EMBED_URL`.
+- **Enterprise scale-out** — Gateway sharding + Redis fan-out only once one server isn't enough.
 
 ---
 

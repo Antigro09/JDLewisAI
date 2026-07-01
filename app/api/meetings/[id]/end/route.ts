@@ -5,6 +5,7 @@ import { meetingSessions } from "@/lib/db/schema";
 import { getCurrentUser } from "@/lib/auth/server";
 import { getMeetingForUser } from "@/lib/meetings/access";
 import { analyzeMeeting, generateMeetingMinutes } from "@/lib/meetings/analysis";
+import { indexMeetingMemory } from "@/lib/meetings/memory";
 import { recordAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
@@ -29,6 +30,12 @@ export async function POST(
   try {
     await analyzeMeeting(user, id);
     const minutes = await generateMeetingMinutes(user, id);
+    // Index into semantic memory (best-effort — never fail closeout on this).
+    try {
+      await indexMeetingMemory(id, meeting.companyId);
+    } catch {
+      // pgvector/embeddings not available; FTS memory still works.
+    }
     await recordAudit({
       userId: user.id,
       action: "meeting.end",
