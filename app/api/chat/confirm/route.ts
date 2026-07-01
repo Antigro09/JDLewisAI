@@ -86,6 +86,7 @@ export async function POST(req: Request) {
           system,
           googleEnabled,
           webSearch,
+          signal: req.signal,
         })) {
           send(ev);
           if (ev.type === "tool_request") {

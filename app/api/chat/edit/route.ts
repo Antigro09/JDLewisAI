@@ -130,6 +130,7 @@ export async function POST(req: Request) {
       webSearch,
       liveAttachments: attachments,
       liveText: newText,
+      signal: req.signal,
     },
     meta: { conversationId },
     convTitle: conv.title,
