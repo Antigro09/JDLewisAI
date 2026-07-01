@@ -10,7 +10,7 @@ import { isGoogleConnected } from "@/lib/google/client";
 import { effectivePlugins } from "@/lib/plugins";
 import { buildChatSystem } from "@/lib/data";
 import { truncate } from "@/lib/utils";
-import { RESEARCH_MODE_NOTE, SELF_CHECK_NOTE } from "@/lib/claude/system";
+import { RESEARCH_MODE_NOTE, SELF_CHECK_NOTE, VOICE_MODE_NOTE } from "@/lib/claude/system";
 import { getMode } from "@/lib/claude/modes";
 import { appendMessage } from "@/lib/chat/branches";
 import { streamAgentTurn } from "@/lib/chat/run-turn";
@@ -36,6 +36,7 @@ type Body = {
   selfCheck?: boolean;
   mode?: string;
   team?: boolean;
+  voice?: boolean;
 };
 
 export async function POST(req: Request) {
@@ -170,6 +171,7 @@ export async function POST(req: Request) {
   if (mode?.note) system = `${system}\n\n${mode.note}`;
   if (researchMode) system = `${system}\n\n${RESEARCH_MODE_NOTE}`;
   if (body.selfCheck) system = `${system}\n\n${SELF_CHECK_NOTE}`;
+  if (body.voice) system = `${system}\n\n${VOICE_MODE_NOTE}`;
 
   const conversationId = convId;
   const convTitle = conv?.title ?? truncate(message, 50);

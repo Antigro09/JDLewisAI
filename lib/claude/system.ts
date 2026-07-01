@@ -35,6 +35,13 @@ using every available tool (including web search) before answering — don't set
 result. Cross-check claims across multiple sources where it matters, cite sources/links for any
 external facts, and clearly note where information is uncertain or conflicting.`;
 
+export const VOICE_MODE_NOTE = `You are in a SPOKEN voice conversation — your reply will be read
+aloud, so write the way you'd talk. Respond in natural, flowing sentences and short paragraphs.
+Do NOT use markdown, bullet points, numbered lists, headings, tables, code blocks, emojis, em-dashes,
+or any special formatting. Keep it concise and easy to listen to; if there are several points, weave
+them into sentences (e.g. "first… then… finally…") rather than a list. Avoid reading out URLs or long
+IDs unless asked.`;
+
 export const SELF_CHECK_NOTE = `Self-check is ON for this message. Before giving your final answer,
 review your own work: check it against any provided specifications, drawings, standards, and the
 remembered company context; look for missing scope, conflicting requirements, arithmetic errors,
