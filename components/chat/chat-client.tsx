@@ -338,6 +338,9 @@ export function ChatClient({
   // Stop any in-flight speech / recognition / mic on unmount.
   useEffect(() => {
     return () => {
+      // Kill the voice loop first so any pending speak()/recognition callbacks
+      // that fire during teardown don't restart listening on a dead instance.
+      voiceChatRef.current = false;
       recognitionRef.current?.stop?.();
       abortRef.current?.abort();
       stopWaveform();
@@ -595,6 +598,11 @@ export function ChatClient({
     recognitionRef.current = null;
     stopAudio();
     setLiveTranscript("");
+    // Reconcile with the server now that the loop is done: for a brand-new chat this
+    // performs the deferred navigation to /chat/[id]; for an existing one it refreshes
+    // so the just-spoken turns regain their ids/branch info for edit/delete.
+    if (convIdRef.current) router.replace(`/chat/${convIdRef.current}`);
+    else router.refresh();
   }
 
   function stopGeneration() {
@@ -731,6 +739,7 @@ export function ChatClient({
           selfCheck,
           mode,
           team,
+          voice: voiceChatRef.current,
         }),
       });
       createdId = await consumeResponse(res);
@@ -746,7 +755,9 @@ export function ChatClient({
       setSending(false);
       abortRef.current = null;
       // On a manual stop, keep the partial reply rather than reloading the full one.
-      if (!aborted) {
+      // During a voice conversation, never navigate/refresh — that would remount this
+      // component and orphan the listen→speak loop. We reconcile once, on End voice.
+      if (!aborted && !voiceChatRef.current) {
         if (wasNew && createdId) router.replace(`/chat/${createdId}`);
         else if (convIdRef.current) router.refresh();
       }
