@@ -7,6 +7,7 @@ import { Button, Card, Input, Label, Textarea } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { PLUGINS, getOrgDefaults } from "@/lib/plugins";
 import { getOrgTemplate } from "@/lib/templates/render";
+import { listAuditLog } from "@/lib/audit";
 import { formatDate } from "@/lib/utils";
 import {
   deleteUser,
@@ -58,9 +59,10 @@ export default async function AdminPage() {
   ]);
 
   const usageByUser = new Map(usageRows.map((u) => [u.userId, u]));
-  const [orgDefaults, docTemplate] = await Promise.all([
+  const [orgDefaults, docTemplate, auditEntries] = await Promise.all([
     getOrgDefaults(),
     getOrgTemplate(),
+    listAuditLog(60),
   ]);
   const grandTotal = totalRow[0];
   const automationCounts = Object.fromEntries(automationStats.map((r) => [r.status, Number(r.count)]));
@@ -272,6 +274,44 @@ export default async function AdminPage() {
             })}
           </tbody>
         </table>
+      </Card>
+
+      {/* Activity log (audit trail) */}
+      <Card className="overflow-x-auto p-0">
+        <div className="border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
+          <h2 className="font-semibold text-neutral-900 dark:text-neutral-100">Activity log</h2>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            Recent AI actions across the org (messages, tool calls, automation runs).
+          </p>
+        </div>
+        {auditEntries.length === 0 ? (
+          <p className="px-4 py-4 text-sm text-neutral-400">No activity recorded yet.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-400 dark:border-neutral-800">
+                <th className="px-4 py-2">When</th>
+                <th className="px-4 py-2">User</th>
+                <th className="px-4 py-2">Action</th>
+                <th className="px-4 py-2">Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              {auditEntries.map((a) => (
+                <tr key={a.id} className="border-b border-neutral-100 dark:border-neutral-800">
+                  <td className="whitespace-nowrap px-4 py-2 text-neutral-500 dark:text-neutral-400">
+                    {formatDate(a.createdAt)}
+                  </td>
+                  <td className="px-4 py-2 dark:text-neutral-200">{a.userName ?? "—"}</td>
+                  <td className="px-4 py-2 font-mono text-xs text-neutral-600 dark:text-neutral-300">
+                    {a.action}
+                  </td>
+                  <td className="px-4 py-2 text-neutral-500 dark:text-neutral-400">{a.detail ?? ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </Card>
       </div>
     </PageShell>

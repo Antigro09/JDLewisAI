@@ -184,6 +184,40 @@ Run `npm run db:push` after pulling Phase 5 — it adds `conversations.pinned`,
 `conversations.active_leaf_id`, `messages.parent_id`, and the `skill_files`, `notifications`, and
 `document_templates` tables.
 
+## Team, memory, calculators & quality (Phase 6)
+
+- **Composer "+" menu** — add files/photos, attach to a project, insert saved prompts, toggle
+  Skills, jump to Connectors/Plugins, and flip per-message **Research / Web search / Self-check /
+  Team** on. The model/effort picker sits bottom-right with **voice dictation** (speech-to-text)
+  and **read-aloud** (text-to-speech) controls.
+- **Reasoning modes** — a Mode selector (Quick answer, Plan review, Estimating, Safety review,
+  Contract analysis, Scheduling, Cost analysis, Executive summary, Deep research) that presets how
+  the AI approaches a message.
+- **Team mode (multi-agent)** — an orchestrator picks the relevant specialist personas (Project
+  Manager, Estimator, Scheduler, Safety, QA/QC, Contract Specialist, Document Analyst, Building Code
+  Expert, Cost Engineer, Procurement), consults each in parallel, and synthesizes one integrated
+  answer that attributes points and reconciles conflicts.
+- **Long-term memory** — durable facts (company standards, preferred subs/materials, methods,
+  lessons) managed under **Customize → Memory** and recalled in every chat & automation; the AI can
+  also `save_memory` on request.
+- **Prompt library** — reusable prompts under **Customize → Prompts**, inserted from the composer.
+- **Construction calculators** — concrete, rebar, pipe volume, voltage drop, and HVAC-load tools the
+  AI can call in chat, plus a direct-use **/calculators** page.
+- **Built-in skills** — admins can one-click install workflow skills (punch list, meeting minutes,
+  quantity takeoff, safety plan, value engineering, material order, submittal review, schedule
+  recovery, drawing comparison) org-wide from **Customize → Skills**.
+- **Quality layer** — a **Self-check** toggle (self-review pass), confidence + source-citation
+  behavior in modes, and an **Activity log** (audit trail of messages, tool calls, and automation
+  runs) on the admin page.
+
+Run `npm run db:push` after pulling Phase 6 — it adds the `memories`, `prompts`, and `audit_log`
+tables.
+
+Explicitly **out of scope** (documented for later): third-party connectors (Procore, Autodesk,
+Bluebeam, QuickBooks, Sage, Primavera, SharePoint, Slack, Teams, …) which each need vendor
+credentials, MCP servers, multi-model routing to non-Anthropic models, and a semantic knowledge
+graph / digital twin.
+
 ## Roadmap
 
 - ~~**Phase 2 — Google**~~ · ~~**Phase 3 — Automations**~~ · ~~**Phase 4 — Skills & plugins**~~ ·

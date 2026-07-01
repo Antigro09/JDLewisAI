@@ -2,12 +2,16 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { googleAccounts, skills, skillFiles } from "@/lib/db/schema";
-import { requireUser } from "@/lib/auth/server";
+import { requireUser, requireAdmin } from "@/lib/auth/server";
 import { PLUGINS, setUserPlugin } from "@/lib/plugins";
 import { parseSkillMd } from "@/lib/skills/parse-skill-md";
+import { BUILTIN_SKILLS } from "@/lib/skills/builtin";
+import { createMemory, deleteMemory, MEMORY_CATEGORIES } from "@/lib/memory";
+import { createPrompt, deletePrompt } from "@/lib/prompts";
+import type { MemoryCategory } from "@/lib/db/schema";
 
 export async function disconnectGoogle() {
   const user = await requireUser();
@@ -102,4 +106,67 @@ export async function createSkillFromMarkdown(
   }
 
   redirect("/customize?tab=skills");
+}
+
+export async function addMemory(formData: FormData) {
+  const user = await requireUser();
+  const content = String(formData.get("content") ?? "").trim();
+  if (!content) return;
+  const catRaw = String(formData.get("category") ?? "other");
+  const category = (MEMORY_CATEGORIES.some((c) => c.id === catRaw)
+    ? catRaw
+    : "other") as MemoryCategory;
+  const scope =
+    user.role === "ADMIN" && formData.get("scope") === "org" ? "org" : "personal";
+  await createMemory({ ownerId: user.id, scope, category, content });
+  revalidatePath("/customize");
+}
+
+export async function removeMemory(id: string) {
+  const user = await requireUser();
+  await deleteMemory(user.id, id);
+  revalidatePath("/customize");
+}
+
+export async function addPrompt(formData: FormData) {
+  const user = await requireUser();
+  const title = String(formData.get("title") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim();
+  if (!title || !body) return;
+  const scope =
+    user.role === "ADMIN" && formData.get("scope") === "org" ? "org" : "personal";
+  await createPrompt({ ownerId: user.id, scope, title, body });
+  revalidatePath("/customize");
+}
+
+export async function removePrompt(id: string) {
+  const user = await requireUser();
+  await deletePrompt(user.id, id);
+  revalidatePath("/customize");
+}
+
+/** Install the built-in construction workflow skills org-wide (admin only),
+ * skipping any already present by name. Idempotent. */
+export async function installBuiltinSkills() {
+  const admin = await requireAdmin();
+  const names = BUILTIN_SKILLS.map((s) => s.name);
+  const existing = await db
+    .select({ name: skills.name })
+    .from(skills)
+    .where(and(eq(skills.scope, "org"), inArray(skills.name, names)));
+  const have = new Set(existing.map((e) => e.name));
+  const toInsert = BUILTIN_SKILLS.filter((s) => !have.has(s.name));
+  if (toInsert.length > 0) {
+    await db.insert(skills).values(
+      toInsert.map((s) => ({
+        ownerId: admin.id,
+        scope: "org" as const,
+        name: s.name,
+        description: s.description,
+        instructions: s.instructions,
+        defaultActive: false,
+      })),
+    );
+  }
+  revalidatePath("/customize");
 }

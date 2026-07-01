@@ -13,8 +13,10 @@ import { isGoogleConnected } from "@/lib/google/client";
 import { effectivePlugins } from "@/lib/plugins";
 import { AUTOMATION_TOOL_NAMES } from "@/lib/tools/google-tools";
 import { BASE_SYSTEM, GOOGLE_TOOLS_NOTE } from "@/lib/claude/system";
+import { listMemories, buildMemoryPrompt } from "@/lib/memory";
 import { truncate } from "@/lib/utils";
 import { createNotification, maybeSendEmailNotification } from "@/lib/notifications";
+import { recordAudit } from "@/lib/audit";
 
 const AUTOMATION_NOTE = `You are running as an UNATTENDED AUTOMATION on behalf of the user. No human
 is available to confirm actions, so complete the task end-to-end using your tools. You may read
@@ -85,9 +87,11 @@ Only process items since the last run to avoid duplicates. Complete the task now
     blocks: [{ type: "text", text: context }],
   });
 
+  const memoryPrompt = buildMemoryPrompt(await listMemories(owner));
   const system = [
     BASE_SYSTEM,
     googleEnabled ? GOOGLE_TOOLS_NOTE : "",
+    memoryPrompt,
     AUTOMATION_NOTE,
   ]
     .filter(Boolean)
@@ -134,6 +138,13 @@ Only process items since the last run to avoid duplicates. Complete the task now
       lastError: errored,
     })
     .where(eq(automations.id, auto.id));
+
+  await recordAudit({
+    userId: owner.id,
+    action: "automation.run",
+    detail: `${auto.name} — ${errored ? "error" : "success"}`,
+    conversationId: conv.id,
+  });
 
   const title = errored
     ? `Automation failed: ${auto.name}`

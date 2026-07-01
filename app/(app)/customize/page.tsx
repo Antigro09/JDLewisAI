@@ -8,8 +8,19 @@ import { getGoogleAccount } from "@/lib/google/client";
 import { googleConfigured } from "@/lib/google/oauth";
 import { PLUGINS, effectivePlugins } from "@/lib/plugins";
 import { listAvailableSkills } from "@/lib/skills";
+import { listMemories, MEMORY_CATEGORIES } from "@/lib/memory";
+import { listPrompts } from "@/lib/prompts";
+import { Input, Label, Select, Textarea } from "@/components/ui";
 import { SkillUploadForm } from "@/components/customize/skill-upload-form";
-import { disconnectGoogle, savePluginPrefs } from "./actions";
+import {
+  disconnectGoogle,
+  savePluginPrefs,
+  addMemory,
+  removeMemory,
+  addPrompt,
+  removePrompt,
+  installBuiltinSkills,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +28,8 @@ const TABS = [
   { id: "connections", label: "Connections" },
   { id: "plugins", label: "Plugins" },
   { id: "skills", label: "Skills" },
+  { id: "memory", label: "Memory" },
+  { id: "prompts", label: "Prompts" },
 ];
 
 const STATUS_MESSAGES: Record<string, { text: string; ok: boolean }> = {
@@ -40,12 +53,15 @@ export default async function CustomizePage({
   const status = google ? STATUS_MESSAGES[google] : undefined;
   const isAdmin = user.role === "ADMIN";
 
-  const [account, configured, plugins, skills] = await Promise.all([
-    getGoogleAccount(user.id),
-    Promise.resolve(googleConfigured()),
-    effectivePlugins(user.id),
-    listAvailableSkills(user),
-  ]);
+  const [account, configured, plugins, skills, memories, savedPrompts] =
+    await Promise.all([
+      getGoogleAccount(user.id),
+      Promise.resolve(googleConfigured()),
+      effectivePlugins(user.id),
+      listAvailableSkills(user),
+      listMemories(user),
+      listPrompts(user),
+    ]);
 
   return (
     <PageShell
@@ -150,6 +166,20 @@ export default async function CustomizePage({
                 Create one manually →
               </Link>
             </p>
+            {isAdmin && (
+              <div className="mt-4 border-t border-neutral-100 pt-4 dark:border-neutral-800">
+                <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">
+                  Install the built-in construction workflow skills (punch list, meeting
+                  minutes, quantity takeoff, safety plan, VE, material order, submittal
+                  review, schedule recovery, drawing comparison) org-wide.
+                </p>
+                <form action={installBuiltinSkills}>
+                  <SubmitButton size="sm" variant="secondary">
+                    Install built-in skills
+                  </SubmitButton>
+                </form>
+              </div>
+            )}
           </Card>
 
           <div className="space-y-3">
@@ -182,6 +212,150 @@ export default async function CustomizePage({
                   )}
                 </Card>
               </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {tab === "memory" && (
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card className="p-5">
+            <h2 className="mb-1 font-medium dark:text-neutral-100">Add a memory</h2>
+            <p className="mb-3 text-xs text-neutral-400">
+              Durable facts the AI recalls in every chat — company standards, preferred subs &amp;
+              materials, estimating methods, writing style, lessons learned.
+            </p>
+            <form action={addMemory} className="space-y-3">
+              <div>
+                <Label htmlFor="category">Category</Label>
+                <Select id="category" name="category" defaultValue="standard" className="h-10 w-full">
+                  {MEMORY_CATEGORIES.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="content">Memory</Label>
+                <Textarea
+                  id="content"
+                  name="content"
+                  rows={3}
+                  required
+                  placeholder="e.g. We standardly exclude fire-stopping from electrical scopes; prefer ABC Electric for schools."
+                />
+              </div>
+              {isAdmin && (
+                <div>
+                  <Label htmlFor="scope">Visibility</Label>
+                  <Select id="scope" name="scope" defaultValue="personal" className="h-10 w-full">
+                    <option value="personal">Personal (only me)</option>
+                    <option value="org">Org-wide (everyone)</option>
+                  </Select>
+                </div>
+              )}
+              <SubmitButton size="sm">Save memory</SubmitButton>
+            </form>
+          </Card>
+
+          <div className="space-y-3">
+            <h2 className="font-medium dark:text-neutral-100">Remembered</h2>
+            {memories.length === 0 && (
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">Nothing remembered yet.</p>
+            )}
+            {memories.map((m) => (
+              <Card key={m.id} className="flex items-start justify-between gap-3 p-4">
+                <div className="min-w-0">
+                  <div className="mb-0.5 flex items-center gap-2">
+                    <Badge className="bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+                      {MEMORY_CATEGORIES.find((c) => c.id === m.category)?.label ?? "Other"}
+                    </Badge>
+                    {m.scope === "org" && (
+                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                        org
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-sm text-neutral-700 dark:text-neutral-200">{m.content}</p>
+                </div>
+                {(m.ownerId === user.id || (isAdmin && m.scope === "org")) && (
+                  <form action={removeMemory.bind(null, m.id)}>
+                    <Button type="submit" variant="ghost" size="sm">
+                      Remove
+                    </Button>
+                  </form>
+                )}
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {tab === "prompts" && (
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card className="p-5">
+            <h2 className="mb-1 font-medium dark:text-neutral-100">Save a prompt</h2>
+            <p className="mb-3 text-xs text-neutral-400">
+              Reusable prompts &amp; workflows you can drop into any chat from the composer&apos;s
+              &quot;+&quot; menu.
+            </p>
+            <form action={addPrompt} className="space-y-3">
+              <div>
+                <Label htmlFor="title">Title</Label>
+                <Input id="title" name="title" required placeholder="e.g. Review a subcontract" />
+              </div>
+              <div>
+                <Label htmlFor="body">Prompt</Label>
+                <Textarea
+                  id="body"
+                  name="body"
+                  rows={5}
+                  required
+                  placeholder="The prompt text to insert into the message box…"
+                />
+              </div>
+              {isAdmin && (
+                <div>
+                  <Label htmlFor="scope">Visibility</Label>
+                  <Select id="scope" name="scope" defaultValue="personal" className="h-10 w-full">
+                    <option value="personal">Personal (only me)</option>
+                    <option value="org">Org-wide (everyone)</option>
+                  </Select>
+                </div>
+              )}
+              <SubmitButton size="sm">Save prompt</SubmitButton>
+            </form>
+          </Card>
+
+          <div className="space-y-3">
+            <h2 className="font-medium dark:text-neutral-100">Saved prompts</h2>
+            {savedPrompts.length === 0 && (
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">No saved prompts yet.</p>
+            )}
+            {savedPrompts.map((p) => (
+              <Card key={p.id} className="flex items-start justify-between gap-3 p-4">
+                <div className="min-w-0">
+                  <div className="mb-0.5 flex items-center gap-2">
+                    <span className="font-medium dark:text-neutral-100">{p.title}</span>
+                    {p.scope === "org" && (
+                      <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                        org
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="line-clamp-3 text-sm text-neutral-500 dark:text-neutral-400">
+                    {p.body}
+                  </p>
+                </div>
+                {(p.ownerId === user.id || (isAdmin && p.scope === "org")) && (
+                  <form action={removePrompt.bind(null, p.id)}>
+                    <Button type="submit" variant="ghost" size="sm">
+                      Remove
+                    </Button>
+                  </form>
+                )}
+              </Card>
             ))}
           </div>
         </div>
