@@ -371,10 +371,20 @@ export const GOOGLE_TOOLS: GoogleTool[] = [
   },
 ];
 
-/** Tools available to unattended automations — everything except sending email. */
+/**
+ * Tools available to unattended automations. By default email can only be
+ * DRAFTED (gmail_send excluded); automations explicitly opted into sending get
+ * the full set including gmail_send.
+ */
 export const AUTOMATION_TOOL_NAMES = GOOGLE_TOOLS.map((t) => t.name).filter(
   (n) => n !== "gmail_send",
 );
+
+export const AUTOMATION_TOOL_NAMES_WITH_SEND = GOOGLE_TOOLS.map((t) => t.name);
+
+export function automationToolNames(allowSend: boolean): string[] {
+  return allowSend ? AUTOMATION_TOOL_NAMES_WITH_SEND : AUTOMATION_TOOL_NAMES;
+}
 
 export function getGoogleTool(name: string): GoogleTool | undefined {
   return GOOGLE_TOOLS.find((t) => t.name === name);

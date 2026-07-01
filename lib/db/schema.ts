@@ -239,6 +239,8 @@ export const automations = pgTable("automations", {
   instructions: text("instructions").notNull(),
   status: text("status").$type<"active" | "paused">().notNull().default("paused"),
   intervalMinutes: integer("interval_minutes").notNull().default(60),
+  // When true, this automation may SEND email unattended (not just draft one).
+  allowSend: boolean("allow_send").notNull().default(false),
   model: text("model"),
   effort: text("effort"),
   state: jsonb("state").$type<Record<string, unknown>>(),

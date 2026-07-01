@@ -29,6 +29,7 @@ export async function createAutomation(formData: FormData) {
   const instructions = String(formData.get("instructions") ?? "").trim();
   if (!name || !instructions) return;
   const enabled = formData.get("enabled") === "on";
+  const allowSend = formData.get("allowSend") === "on";
   const intervalMinutes = parseInterval(formData.get("intervalMinutes"));
 
   const inserted = await db
@@ -38,6 +39,7 @@ export async function createAutomation(formData: FormData) {
       name,
       instructions,
       intervalMinutes,
+      allowSend,
       model: String(formData.get("model") ?? "") || null,
       effort: String(formData.get("effort") ?? "") || null,
       status: enabled ? "active" : "paused",
@@ -56,6 +58,7 @@ export async function updateAutomation(id: string, formData: FormData) {
       name: String(formData.get("name") ?? "").trim() || "Untitled automation",
       instructions: String(formData.get("instructions") ?? "").trim(),
       intervalMinutes: parseInterval(formData.get("intervalMinutes")),
+      allowSend: formData.get("allowSend") === "on",
       model: String(formData.get("model") ?? "") || null,
       effort: String(formData.get("effort") ?? "") || null,
     })

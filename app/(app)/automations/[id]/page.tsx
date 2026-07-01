@@ -141,6 +141,21 @@ export default async function AutomationDetailPage({
                 ))}
               </Select>
             </div>
+            <label className="flex items-start gap-2 text-sm text-neutral-700 dark:text-neutral-300">
+              <input
+                type="checkbox"
+                name="allowSend"
+                defaultChecked={a.allowSend}
+                className="mt-0.5"
+              />
+              <span>
+                Allow sending email
+                <span className="mt-0.5 block text-xs text-neutral-400">
+                  When off, this automation only drafts emails. When on, it can send email
+                  unattended — no confirmation, so use with care.
+                </span>
+              </span>
+            </label>
             <SubmitButton>Save</SubmitButton>
           </form>
 
