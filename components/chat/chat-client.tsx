@@ -27,6 +27,7 @@ import {
   Plug,
   Blocks,
   FileText,
+  ShieldCheck,
 } from "lucide-react";
 import { Markdown } from "@/components/markdown";
 import { Button, Card, Select, Spinner, Textarea } from "@/components/ui";
@@ -272,6 +273,7 @@ export function ChatClient({
   const [error, setError] = useState<string | null>(null);
   const [researchMode, setResearchMode] = useState(false);
   const [webSearch, setWebSearch] = useState(initialWebSearch);
+  const [selfCheck, setSelfCheck] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   // Composer "+" menu
@@ -505,6 +507,7 @@ export function ChatClient({
           skillIds,
           researchMode,
           webSearch,
+          selfCheck,
         }),
       });
       await consumeResponse(res);
@@ -1048,6 +1051,15 @@ export function ChatClient({
                       <Globe size={16} className={webSearch ? "text-brand-600" : "text-neutral-400"} />
                       <span className="flex-1">Web search</span>
                       {webSearch && <Check size={16} className="text-brand-600" />}
+                    </button>
+                    <button
+                      type="button"
+                      className={menuRowCls}
+                      onClick={() => setSelfCheck((s) => !s)}
+                    >
+                      <ShieldCheck size={16} className={selfCheck ? "text-brand-600" : "text-neutral-400"} />
+                      <span className="flex-1">Self-check</span>
+                      {selfCheck && <Check size={16} className="text-brand-600" />}
                     </button>
                   </div>
                 )}

@@ -10,9 +10,10 @@ import { isGoogleConnected } from "@/lib/google/client";
 import { effectivePlugins } from "@/lib/plugins";
 import { buildChatSystem } from "@/lib/data";
 import { truncate } from "@/lib/utils";
-import { RESEARCH_MODE_NOTE } from "@/lib/claude/system";
+import { RESEARCH_MODE_NOTE, SELF_CHECK_NOTE } from "@/lib/claude/system";
 import { appendMessage } from "@/lib/chat/branches";
 import { streamAgentTurn } from "@/lib/chat/run-turn";
+import { recordAudit } from "@/lib/audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,6 +31,7 @@ type Body = {
   skillIds?: string[];
   researchMode?: boolean;
   webSearch?: boolean;
+  selfCheck?: boolean;
 };
 
 export async function POST(req: Request) {
@@ -129,6 +131,12 @@ export async function POST(req: Request) {
     role: "user",
     blocks: userBlocks,
   });
+  await recordAudit({
+    userId: user.id,
+    action: "chat.message",
+    detail: truncate(message || "(attachment)", 200),
+    conversationId: convId,
+  });
 
   if (Array.isArray(body.skillIds)) {
     await db
@@ -155,6 +163,7 @@ export async function POST(req: Request) {
     googleEnabled,
   );
   if (researchMode) system = `${system}\n\n${RESEARCH_MODE_NOTE}`;
+  if (body.selfCheck) system = `${system}\n\n${SELF_CHECK_NOTE}`;
 
   const conversationId = convId;
   const convTitle = conv?.title ?? truncate(message, 50);

@@ -495,6 +495,19 @@ export const notifications = pgTable("notifications", {
 });
 export type Notification = typeof notifications.$inferSelect;
 
+/** Audit trail (Phase 6): a record of AI actions for compliance & debugging. */
+export const auditLog = pgTable("audit_log", {
+  id: id(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  action: text("action").notNull(), // e.g. "chat.message", "tool.docs_create", "automation.run"
+  detail: text("detail"),
+  conversationId: text("conversation_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type AuditEntry = typeof auditLog.$inferSelect;
+
 export type DocumentTemplateKind =
   | "rfi"
   | "change_order"
