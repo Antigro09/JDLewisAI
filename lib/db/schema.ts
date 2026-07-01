@@ -151,6 +151,16 @@ export type MeetingState = {
   meetingStage?: string;
   confidence?: number;
   updatedAt?: string;
+  /** Discussion categories present in the meeting (from the Classifier agent). */
+  categories?: string[];
+  /** Company knowledge surfaced by the Memory/RAG agent (drawings, RFIs, vendors, …). */
+  relatedKnowledge?: {
+    label: string;
+    detail?: string;
+    refType?: string;
+    source?: string;
+    link?: string;
+  }[];
 };
 
 export const meetingSessions = pgTable("meeting_sessions", {

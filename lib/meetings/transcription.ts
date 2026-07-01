@@ -1,4 +1,4 @@
-import WebSocket from "ws";
+import WebSocket, { type RawData } from "ws";
 
 export type TranscriptEvent = {
   providerId?: string;
@@ -112,13 +112,13 @@ export class AssemblyAiTranscriptionProvider implements TranscriptionProvider {
         clearTimeout(timeout);
         resolve();
       });
-      socket.once("error", (err) => {
+      socket.once("error", (err: Error) => {
         clearTimeout(timeout);
         reject(err);
       });
     });
 
-    socket.on("message", async (raw) => {
+    socket.on("message", async (raw: RawData) => {
       try {
         const data = JSON.parse(raw.toString()) as AssemblyAiMessage;
         if (data.type === "Begin" && data.id) {
