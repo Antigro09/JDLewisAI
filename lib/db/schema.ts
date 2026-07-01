@@ -10,6 +10,36 @@ import {
 
 export type Role = "ADMIN" | "MEMBER";
 export type InvoiceStatus = "APPROVED" | "NEEDS_REVIEW" | "DENIED" | "PENDING";
+export type CompanyRole = "OWNER" | "ADMIN" | "MEMBER";
+export type MeetingStatus = "detected" | "active" | "ended" | "processing" | "complete";
+export type MeetingSource = "manual" | "desktop" | "browser" | "calendar" | "import";
+export type MeetingEventType =
+  | "project_update"
+  | "safety"
+  | "scheduling"
+  | "procurement"
+  | "budget"
+  | "equipment"
+  | "rfi"
+  | "submittal"
+  | "quality"
+  | "change_order"
+  | "client_request"
+  | "risk"
+  | "question"
+  | "action_item"
+  | "decision"
+  | "follow_up"
+  | "general";
+export type MeetingRiskType =
+  | "safety"
+  | "schedule"
+  | "budget"
+  | "material"
+  | "design"
+  | "quality"
+  | "other";
+export type MeetingPriority = "low" | "medium" | "high";
 
 /** Per-user personalization folded into the system prompt. */
 export type Personalization = {
@@ -78,6 +108,26 @@ export const googleAccounts = pgTable("google_accounts", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const companies = pgTable("companies", {
+  id: id(),
+  name: text("name").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type Company = typeof companies.$inferSelect;
+
+export const memberships = pgTable("memberships", {
+  id: id(),
+  companyId: text("company_id")
+    .notNull()
+    .references(() => companies.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  role: text("role").$type<CompanyRole>().notNull().default("MEMBER"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type Membership = typeof memberships.$inferSelect;
+
 export const projects = pgTable("projects", {
   id: id(),
   ownerId: text("owner_id")
@@ -88,6 +138,207 @@ export const projects = pgTable("projects", {
   instructions: text("instructions"), // custom project context injected into prompts
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+export type MeetingState = {
+  currentProject?: string;
+  currentProjectId?: string | null;
+  currentTopic?: string;
+  currentSpeaker?: string;
+  currentDiscussion?: string;
+  currentRisks?: string[];
+  currentActionItems?: string[];
+  currentDecisions?: string[];
+  meetingStage?: string;
+  confidence?: number;
+  updatedAt?: string;
+};
+
+export const meetingSessions = pgTable("meeting_sessions", {
+  id: id(),
+  companyId: text("company_id")
+    .notNull()
+    .references(() => companies.id, { onDelete: "cascade" }),
+  ownerId: text("owner_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  projectId: text("project_id").references(() => projects.id, {
+    onDelete: "set null",
+  }),
+  title: text("title").notNull(),
+  status: text("status").$type<MeetingStatus>().notNull().default("active"),
+  source: text("source").$type<MeetingSource>().notNull().default("manual"),
+  detectedApp: text("detected_app"),
+  detectionConfidence: integer("detection_confidence").notNull().default(0),
+  consentConfirmed: boolean("consent_confirmed").notNull().default(false),
+  autoStartApproved: boolean("auto_start_approved").notNull().default(false),
+  rawAudioEnabled: boolean("raw_audio_enabled").notNull().default(false),
+  transcriptProvider: text("transcript_provider").notNull().default("assemblyai"),
+  state: jsonb("state").$type<MeetingState>(),
+  summary: text("summary"),
+  minutesMarkdown: text("minutes_markdown"),
+  qaNotes: jsonb("qa_notes").$type<string[]>(),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  endedAt: timestamp("ended_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type MeetingSession = typeof meetingSessions.$inferSelect;
+
+export const meetingParticipants = pgTable("meeting_participants", {
+  id: id(),
+  meetingId: text("meeting_id")
+    .notNull()
+    .references(() => meetingSessions.id, { onDelete: "cascade" }),
+  userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+  displayName: text("display_name").notNull(),
+  speakerLabel: text("speaker_label").notNull(),
+  role: text("role"),
+  confidence: integer("confidence").notNull().default(0),
+  isHost: boolean("is_host").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type MeetingParticipant = typeof meetingParticipants.$inferSelect;
+
+export const speakerProfiles = pgTable("speaker_profiles", {
+  id: id(),
+  companyId: text("company_id")
+    .notNull()
+    .references(() => companies.id, { onDelete: "cascade" }),
+  userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+  displayName: text("display_name").notNull(),
+  embeddingEnc: text("embedding_enc"),
+  enrollmentStatus: text("enrollment_status")
+    .$type<"not_started" | "enrolled" | "needs_refresh">()
+    .notNull()
+    .default("not_started"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type SpeakerProfile = typeof speakerProfiles.$inferSelect;
+
+export const transcriptSegments = pgTable("transcript_segments", {
+  id: id(),
+  meetingId: text("meeting_id")
+    .notNull()
+    .references(() => meetingSessions.id, { onDelete: "cascade" }),
+  sequence: integer("sequence").notNull().default(0),
+  speakerLabel: text("speaker_label").notNull().default("Speaker A"),
+  speakerName: text("speaker_name"),
+  text: text("text").notNull(),
+  startMs: integer("start_ms").notNull().default(0),
+  endMs: integer("end_ms").notNull().default(0),
+  confidence: integer("confidence").notNull().default(0),
+  isFinal: boolean("is_final").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type TranscriptSegment = typeof transcriptSegments.$inferSelect;
+
+export const meetingEvents = pgTable("meeting_events", {
+  id: id(),
+  meetingId: text("meeting_id")
+    .notNull()
+    .references(() => meetingSessions.id, { onDelete: "cascade" }),
+  projectId: text("project_id").references(() => projects.id, {
+    onDelete: "set null",
+  }),
+  type: text("type").$type<MeetingEventType>().notNull().default("general"),
+  title: text("title").notNull(),
+  detail: text("detail"),
+  speakerLabel: text("speaker_label"),
+  timestampMs: integer("timestamp_ms").notNull().default(0),
+  confidence: integer("confidence").notNull().default(0),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type MeetingEvent = typeof meetingEvents.$inferSelect;
+
+export const meetingActionItems = pgTable("meeting_action_items", {
+  id: id(),
+  meetingId: text("meeting_id")
+    .notNull()
+    .references(() => meetingSessions.id, { onDelete: "cascade" }),
+  projectId: text("project_id").references(() => projects.id, {
+    onDelete: "set null",
+  }),
+  ownerName: text("owner_name"),
+  task: text("task").notNull(),
+  priority: text("priority").$type<MeetingPriority>().notNull().default("medium"),
+  dueDate: text("due_date"),
+  status: text("status").notNull().default("open"),
+  confidence: integer("confidence").notNull().default(0),
+  sourceTimestampMs: integer("source_timestamp_ms").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type MeetingActionItem = typeof meetingActionItems.$inferSelect;
+
+export const meetingDecisions = pgTable("meeting_decisions", {
+  id: id(),
+  meetingId: text("meeting_id")
+    .notNull()
+    .references(() => meetingSessions.id, { onDelete: "cascade" }),
+  projectId: text("project_id").references(() => projects.id, {
+    onDelete: "set null",
+  }),
+  decision: text("decision").notNull(),
+  reason: text("reason"),
+  supportingDiscussion: text("supporting_discussion"),
+  approvedBy: text("approved_by"),
+  timestampMs: integer("timestamp_ms").notNull().default(0),
+  confidence: integer("confidence").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type MeetingDecision = typeof meetingDecisions.$inferSelect;
+
+export const meetingRisks = pgTable("meeting_risks", {
+  id: id(),
+  meetingId: text("meeting_id")
+    .notNull()
+    .references(() => meetingSessions.id, { onDelete: "cascade" }),
+  projectId: text("project_id").references(() => projects.id, {
+    onDelete: "set null",
+  }),
+  riskType: text("risk_type").$type<MeetingRiskType>().notNull().default("other"),
+  description: text("description").notNull(),
+  severity: text("severity").$type<MeetingPriority>().notNull().default("medium"),
+  mitigation: text("mitigation"),
+  confidence: integer("confidence").notNull().default(0),
+  sourceTimestampMs: integer("source_timestamp_ms").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type MeetingRisk = typeof meetingRisks.$inferSelect;
+
+export const meetingArtifacts = pgTable("meeting_artifacts", {
+  id: id(),
+  meetingId: text("meeting_id")
+    .notNull()
+    .references(() => meetingSessions.id, { onDelete: "cascade" }),
+  type: text("type")
+    .$type<"minutes" | "summary" | "markdown" | "html" | "word" | "pdf" | "spreadsheet" | "email">()
+    .notNull(),
+  title: text("title").notNull(),
+  mime: text("mime").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type MeetingArtifact = typeof meetingArtifacts.$inferSelect;
+
+export const meetingEmbeddings = pgTable("meeting_embeddings", {
+  id: id(),
+  companyId: text("company_id")
+    .notNull()
+    .references(() => companies.id, { onDelete: "cascade" }),
+  meetingId: text("meeting_id")
+    .notNull()
+    .references(() => meetingSessions.id, { onDelete: "cascade" }),
+  sourceType: text("source_type").notNull(),
+  sourceId: text("source_id").notNull(),
+  content: text("content").notNull(),
+  embedding: jsonb("embedding").$type<number[]>(),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type MeetingEmbedding = typeof meetingEmbeddings.$inferSelect;
 
 export const projectFiles = pgTable("project_files", {
   id: id(),

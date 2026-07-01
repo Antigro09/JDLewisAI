@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "db:seed": "tsx lib/db/seed.ts"
+    "db:seed": "tsx lib/db/seed.ts",
+    "desktop:dev": "npm --prefix electron run dev",
+    "desktop:build": "npm --prefix electron run build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.40.0",
@@ -30,6 +32,7 @@
     "rehype-highlight": "^7.0.1",
     "remark-gfm": "^4.0.0",
     "tailwind-merge": "^2.6.0",
+    "ws": "^8.21.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {

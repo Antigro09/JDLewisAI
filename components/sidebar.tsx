@@ -11,6 +11,7 @@ import {
   Map,
   ShieldAlert,
   Workflow,
+  AudioLines,
   Sparkles,
   Settings,
   Users,
@@ -36,6 +37,7 @@ import { NotificationBell } from "@/components/notification-bell";
 const PRIMARY_NAV = [
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/projects", label: "Projects", icon: FolderKanban },
+  { href: "/meetings", label: "Meetings", icon: AudioLines },
   { href: "/automations", label: "Automations", icon: Workflow },
   { href: "/customize", label: "Customize", icon: Sparkles },
 ];

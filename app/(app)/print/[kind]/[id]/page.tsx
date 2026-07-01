@@ -6,10 +6,12 @@ import { scopesOfWork, rfis, changeOrders, dailyReports } from "@/lib/db/schema"
 import { BrandedDocument } from "@/components/branded-document";
 import { getOrgTemplate } from "@/lib/templates/render";
 import { scopeToMarkdown } from "@/lib/tools/scope";
+import { loadMeetingBundle } from "@/lib/meetings/access";
+import { meetingToMarkdown } from "@/lib/meetings/export";
 
 export const dynamic = "force-dynamic";
 
-const KINDS = ["scope", "rfi", "change-order", "daily-report"] as const;
+const KINDS = ["scope", "rfi", "change-order", "daily-report", "meeting-minutes"] as const;
 type Kind = (typeof KINDS)[number];
 
 async function loadDoc(
@@ -35,7 +37,13 @@ async function loadDoc(
   if (kind === "daily-report") {
     const row = (await db.select().from(dailyReports).where(eq(dailyReports.id, id)))[0];
     if (!row || row.userId !== userId || !row.generatedReport) return null;
-    return { title: `Daily Report — ${row.reportDate}`, markdown: row.generatedReport };
+    return { title: `Daily Report - ${row.reportDate}`, markdown: row.generatedReport };
+  }
+  if (kind === "meeting-minutes") {
+    const user = await requireUser();
+    const bundle = await loadMeetingBundle(user, id);
+    if (!bundle) return null;
+    return { title: bundle.meeting.title, markdown: meetingToMarkdown(bundle) };
   }
   return null;
 }

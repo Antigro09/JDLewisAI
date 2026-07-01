@@ -79,7 +79,10 @@ create/edit/send actions pause for one-click approval in the chat.
    verification.
 3. Create an **OAuth client (Web application)** with redirect URI
    `https://YOUR_APP/api/google/callback` (e.g. `http://localhost:3000/api/google/callback` in dev).
-4. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` in the env.
+4. Add `https://YOUR_APP/api/auth/google/callback` as a second redirect URI for normal
+   sign-in/sign-up with Google (e.g. `http://localhost:3000/api/auth/google/callback` in dev).
+5. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, and
+   `GOOGLE_AUTH_REDIRECT_URI` in the env.
 
 Scopes requested: Drive, Docs, Sheets, `gmail.readonly`, `gmail.send`. Tokens are stored
 encrypted (`lib/crypto.ts`, AES-256-GCM) and refreshed automatically. Each user connects from
