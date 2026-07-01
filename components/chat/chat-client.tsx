@@ -34,7 +34,7 @@ import {
   Info,
 } from "lucide-react";
 import { Markdown } from "@/components/markdown";
-import { Button, Card, Select, Spinner, Textarea } from "@/components/ui";
+import { Button, Card, Spinner, Textarea } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { REASONING_MODES } from "@/lib/claude/modes";
 import { switchBranch, deleteMessage } from "@/app/(app)/chat/branch-actions";
@@ -147,6 +147,20 @@ function ActivityList({ activities }: { activities?: Activity[] }) {
   );
 }
 
+/** Short taglines to match the model-picker design. Falls back to `blurb`. */
+const MODEL_TAGLINES: Record<string, string> = {
+  "claude-fable-5": "For your toughest challenges",
+  "claude-opus-4-8": "For complex tasks",
+  "claude-sonnet-5": "Most efficient for everyday tasks",
+  "claude-haiku-4-5-20251001": "Fastest for quick answers",
+};
+
+function fmtEffort(e: string) {
+  if (!e) return "";
+  if (e === "xhigh") return "XHigh";
+  return e[0].toUpperCase() + e.slice(1);
+}
+
 /** Compact model + effort picker (bottom-right of the composer), opens upward. */
 function ModelPicker({
   models,
@@ -164,8 +178,13 @@ function ModelPicker({
   onEffortChange: (effort: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [effortOpen, setEffortOpen] = useState(false);
   const currentModel = models.find((m) => m.id === model);
-  const effortLabel = effort ? effort[0].toUpperCase() + effort.slice(1) : "";
+  // Models without granular effort levels (Haiku) show an "Extended" toggle
+  // instead; it's on whenever a reasoning effort is set.
+  const hasEfforts = efforts.length > 0;
+  const extendedOn = Boolean(effort);
+  const secondary = hasEfforts ? fmtEffort(effort) : extendedOn ? "Extended" : "";
 
   useEffect(() => {
     if (!open) return;
@@ -173,6 +192,12 @@ function ModelPicker({
     document.addEventListener("click", close);
     return () => document.removeEventListener("click", close);
   }, [open]);
+  useEffect(() => {
+    if (!open) setEffortOpen(false);
+  }, [open]);
+
+  const rowCls =
+    "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-700/60";
 
   return (
     <div className="relative">
@@ -185,49 +210,147 @@ function ModelPicker({
         className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
       >
         {currentModel?.label ?? model}
-        {effortLabel && <span className="text-neutral-400">{effortLabel}</span>}
+        {secondary && <span className="text-neutral-400">{secondary}</span>}
         <ChevronDown size={12} />
       </button>
       {open && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute bottom-full right-0 z-20 mb-1 w-56 space-y-2 rounded-lg border border-neutral-200 bg-white p-3 shadow-lg dark:border-neutral-700 dark:bg-neutral-800"
+          className="absolute bottom-full right-0 z-20 mb-1 w-72 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-800"
         >
-          <div>
-            <span className="mb-1 block text-[11px] font-medium uppercase text-neutral-400">
-              Model
-            </span>
-            <Select
-              value={model}
-              onChange={(e) => onModelChange(e.target.value)}
-              className="w-full"
-            >
-              {models.map((m) => (
-                <option key={m.id} value={m.id} disabled={!m.enabled}>
-                  {m.label}
-                  {!m.enabled ? " (unavailable)" : ""}
-                </option>
-              ))}
-            </Select>
-          </div>
-          {efforts.length > 0 && (
-            <div>
-              <span className="mb-1 block text-[11px] font-medium uppercase text-neutral-400">
-                Effort
-              </span>
-              <Select
-                value={effort}
-                onChange={(e) => onEffortChange(e.target.value)}
-                className="w-full"
+          {models.map((m) => {
+            const selected = m.id === model;
+            const tagline = MODEL_TAGLINES[m.id] ?? m.blurb;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                disabled={!m.enabled}
+                onClick={() => {
+                  if (!m.enabled) return;
+                  onModelChange(m.id);
+                  setOpen(false);
+                }}
+                className={cn(
+                  "flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left",
+                  m.enabled
+                    ? "hover:bg-neutral-100 dark:hover:bg-neutral-700/60"
+                    : "cursor-default",
+                )}
               >
-                {efforts.map((e) => (
-                  <option key={e} value={e}>
-                    {e}
-                  </option>
-                ))}
-              </Select>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "text-sm font-medium",
+                        m.enabled
+                          ? "text-neutral-900 dark:text-neutral-100"
+                          : "text-neutral-400 dark:text-neutral-500",
+                      )}
+                    >
+                      {m.label}
+                    </span>
+                    {!m.enabled && (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400 dark:bg-neutral-700 dark:text-neutral-400">
+                        <Info size={11} />
+                        Currently unavailable
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    className={cn(
+                      "mt-0.5 text-xs",
+                      m.enabled
+                        ? "text-neutral-500 dark:text-neutral-400"
+                        : "text-neutral-400 dark:text-neutral-600",
+                    )}
+                  >
+                    {tagline}
+                  </div>
+                </div>
+                {selected && (
+                  <Check size={16} className="mt-0.5 shrink-0 text-brand-600 dark:text-brand-400" />
+                )}
+              </button>
+            );
+          })}
+
+          <div className="my-1 border-t border-neutral-100 dark:border-neutral-700" />
+
+          {hasEfforts ? (
+            <div>
+              <button
+                type="button"
+                className={rowCls}
+                onClick={() => setEffortOpen((s) => !s)}
+              >
+                <span className="flex-1 font-medium">Effort</span>
+                <span className="text-neutral-400">{fmtEffort(effort)}</span>
+                <ChevronRight
+                  size={15}
+                  className={cn(
+                    "text-neutral-400 transition-transform",
+                    effortOpen && "rotate-90",
+                  )}
+                />
+              </button>
+              {effortOpen && (
+                <div className="mb-1 ml-3 mr-1 space-y-0.5 border-l border-neutral-200 pl-2 dark:border-neutral-700">
+                  {efforts.map((e) => (
+                    <button
+                      key={e}
+                      type="button"
+                      onClick={() => {
+                        onEffortChange(e);
+                        setOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700/60"
+                    >
+                      <span className="flex-1">{fmtEffort(e)}</span>
+                      {effort === e && (
+                        <Check size={14} className="text-brand-600 dark:text-brand-400" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onEffortChange(extendedOn ? "" : "high")}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-700/60"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                  Extended
+                </div>
+                <div className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                  Always uses deep reasoning
+                </div>
+              </div>
+              <span
+                className={cn(
+                  "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
+                  extendedOn ? "bg-brand-600" : "bg-neutral-300 dark:bg-neutral-600",
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform",
+                    extendedOn ? "translate-x-4" : "translate-x-0.5",
+                  )}
+                />
+              </span>
+            </button>
           )}
+
+          <div className="my-1 border-t border-neutral-100 dark:border-neutral-700" />
+
+          <div className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-neutral-400 dark:text-neutral-500">
+            <span className="flex-1">More models</span>
+            <ChevronRight size={15} className="text-neutral-400" />
+          </div>
         </div>
       )}
     </div>
