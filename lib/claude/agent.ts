@@ -133,6 +133,8 @@ export type RunAgentOptions = {
   webSearch?: boolean;
   /** Deeper multi-step investigation: raises the step cap and forces web search on. */
   researchMode?: boolean;
+  /** Abort signal — stops generation when the client cancels the request. */
+  signal?: AbortSignal;
 };
 
 /**
@@ -207,13 +209,17 @@ export async function* runAgentTurn(
 
       const stream = (
         anthropic().messages as unknown as {
-          stream: (p: unknown) => AsyncIterable<Record<string, unknown>> & {
+          stream: (
+            p: unknown,
+            o?: { signal?: AbortSignal },
+          ) => AsyncIterable<Record<string, unknown>> & {
             finalMessage: () => Promise<unknown>;
           };
         }
-      ).stream(params);
+      ).stream(params, opts.signal ? { signal: opts.signal } : undefined);
 
       for await (const event of stream) {
+        if (opts.signal?.aborted) break;
         if (event.type === "content_block_delta") {
           const delta = event.delta as Record<string, unknown> | undefined;
           if (delta?.type === "thinking_delta")
@@ -222,6 +228,9 @@ export async function* runAgentTurn(
             yield { type: "text", text: String(delta.text ?? "") };
         }
       }
+
+      // Client stopped generation — halt without persisting this turn.
+      if (opts.signal?.aborted) return;
 
       const final = (await stream.finalMessage()) as {
         content: ApiContentBlock[];

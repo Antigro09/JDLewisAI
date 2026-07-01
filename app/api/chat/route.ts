@@ -223,6 +223,7 @@ export async function POST(req: Request) {
       researchMode,
       liveAttachments: attachments,
       liveText: message,
+      signal: req.signal,
     },
     meta: { conversationId, isNew, title: convTitle },
     convTitle,

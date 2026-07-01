@@ -30,6 +30,8 @@ import {
   ShieldCheck,
   Users,
   SlidersHorizontal,
+  Square,
+  Info,
 } from "lucide-react";
 import { Markdown } from "@/components/markdown";
 import { Button, Card, Select, Spinner, Textarea } from "@/components/ui";
@@ -286,10 +288,13 @@ export function ChatClient({
   const [menuSection, setMenuSection] = useState<
     "project" | "skills" | "prompts" | "mode" | null
   >(null);
-  // Voice
-  const [listening, setListening] = useState(false);
-  const [voiceMode, setVoiceMode] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
+  // Voice: dictation (mic → text) and voice conversation (AudioLines)
+  const [listening, setListening] = useState(false); // dictation bar active
+  const [voiceChat, setVoiceChat] = useState(false); // full voice conversation
+  const [voiceStatus, setVoiceStatus] = useState<"listening" | "thinking" | "speaking">(
+    "listening",
+  );
+  const [liveTranscript, setLiveTranscript] = useState("");
 
   const convIdRef = useRef<string | null>(conversationId);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -297,7 +302,13 @@ export function ChatClient({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const baseInputRef = useRef("");
-  const voiceModeRef = useRef(false);
+  const voiceChatRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+  // Live mic waveform
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const waveCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const currentModel = models.find((m) => m.id === model);
   const efforts = currentModel?.efforts ?? [];
@@ -306,6 +317,12 @@ export function ChatClient({
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, pending]);
+
+  // Re-sync from the server after a refresh (edits/sends/branch switches) so
+  // messages regain their ids, branch info, and canonical content.
+  useEffect(() => {
+    setMessages(initialMessages);
+  }, [initialMessages]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -317,12 +334,15 @@ export function ChatClient({
     return () => document.removeEventListener("click", close);
   }, [menuOpen]);
 
-  // Stop any in-flight speech / recognition on unmount.
+  // Stop any in-flight speech / recognition / mic on unmount.
   useEffect(() => {
     return () => {
       recognitionRef.current?.stop?.();
+      abortRef.current?.abort();
+      stopWaveform();
       if (typeof window !== "undefined") window.speechSynthesis?.cancel();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function onModelChange(id: string) {
@@ -342,19 +362,70 @@ export function ChatClient({
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  // --- Voice: dictation (speech-to-text) ---
-  function toggleListening() {
-    if (typeof window === "undefined") return;
+  function getSR() {
+    if (typeof window === "undefined") return null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    return (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || null;
+  }
+
+  // --- Live mic waveform (voice-memo style) ---
+  async function startWaveform() {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new Ctx();
+      audioCtxRef.current = ctx;
+      const src = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      src.connect(analyser);
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const draw = () => {
+        const canvas = waveCanvasRef.current;
+        rafRef.current = requestAnimationFrame(draw);
+        if (!canvas) return;
+        const g = canvas.getContext("2d");
+        if (!g) return;
+        analyser.getByteFrequencyData(data);
+        const w = canvas.width;
+        const h = canvas.height;
+        g.clearRect(0, 0, w, h);
+        const bars = 32;
+        const step = Math.floor(data.length / bars);
+        const bw = w / bars;
+        g.fillStyle = "#ea580c";
+        for (let i = 0; i < bars; i++) {
+          const v = data[i * step] / 255;
+          const bh = Math.max(2, v * h);
+          g.fillRect(i * bw + 1, (h - bh) / 2, bw - 2, bh);
+        }
+      };
+      draw();
+    } catch {
+      // mic denied — waveform just won't show; dictation may still work
+    }
+  }
+
+  function stopWaveform() {
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+    mediaStreamRef.current = null;
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+  }
+
+  // --- Dictation (mic → text, with waveform + confirm/cancel) ---
+  function startDictation() {
+    const SR = getSR();
     if (!SR) {
       setError("Voice input isn't supported in this browser.");
       return;
     }
-    if (listening) {
-      recognitionRef.current?.stop?.();
-      return;
-    }
+    if (voiceChatRef.current) stopVoiceChat();
     const rec = new SR();
     rec.lang = "en-US";
     rec.interimResults = true;
@@ -363,42 +434,125 @@ export function ChatClient({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (e: any) => {
       let transcript = "";
-      for (let i = 0; i < e.results.length; i++) {
-        transcript += e.results[i][0].transcript;
-      }
+      for (let i = 0; i < e.results.length; i++) transcript += e.results[i][0].transcript;
       setInput(baseInputRef.current + transcript);
     };
-    rec.onend = () => {
-      setListening(false);
-      recognitionRef.current = null;
-    };
-    rec.onerror = () => setListening(false);
+    rec.onerror = () => {};
     recognitionRef.current = rec;
-    rec.start();
+    try {
+      rec.start();
+    } catch {
+      /* already started */
+    }
     setListening(true);
+    startWaveform();
   }
 
-  // --- Voice: read responses aloud (text-to-speech) ---
-  function speak(text: string) {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
+  function stopDictation(action: "send" | "cancel") {
+    recognitionRef.current?.stop?.();
+    recognitionRef.current = null;
+    stopWaveform();
+    setListening(false);
+    if (action === "cancel") {
+      setInput(baseInputRef.current.trimEnd());
+    } else {
+      // give the recognizer a beat to flush the final result, then send
+      setTimeout(() => send(), 150);
+    }
+  }
+
+  // --- Text-to-speech ---
+  function speak(text: string, onEnd?: () => void) {
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      onEnd?.();
+      return;
+    }
     const clean = stripMarkdown(text);
-    if (!clean) return;
+    if (!clean) {
+      onEnd?.();
+      return;
+    }
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(clean);
-    u.onstart = () => setSpeaking(true);
-    u.onend = () => setSpeaking(false);
-    u.onerror = () => setSpeaking(false);
+    u.onstart = () => setVoiceStatus("speaking");
+    u.onend = () => onEnd?.();
+    u.onerror = () => onEnd?.();
     window.speechSynthesis.speak(u);
   }
 
-  function toggleVoiceMode() {
-    const next = !voiceMode;
-    setVoiceMode(next);
-    voiceModeRef.current = next;
-    if (!next && typeof window !== "undefined") {
-      window.speechSynthesis?.cancel();
-      setSpeaking(false);
+  // --- Voice conversation (hands-free: listen → send → speak → repeat) ---
+  function startVoiceListen() {
+    const SR = getSR();
+    if (!SR || !voiceChatRef.current) return;
+    setVoiceStatus("listening");
+    setLiveTranscript("");
+    const rec = new SR();
+    rec.lang = "en-US";
+    rec.interimResults = true;
+    rec.continuous = false;
+    let finalText = "";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onresult = (e: any) => {
+      let interim = "";
+      finalText = "";
+      for (let i = 0; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) finalText += t;
+        else interim += t;
+      }
+      setLiveTranscript((finalText + " " + interim).trim());
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rec.onerror = (e: any) => {
+      if (e?.error === "not-allowed" || e?.error === "service-not-allowed") {
+        setError("Microphone access is blocked. Enable it to use voice.");
+        stopVoiceChat();
+      }
+    };
+    rec.onend = () => {
+      recognitionRef.current = null;
+      const said = finalText.trim();
+      if (!voiceChatRef.current) return;
+      if (said) {
+        setLiveTranscript("");
+        setVoiceStatus("thinking");
+        send(said);
+      } else {
+        // nothing heard — keep listening
+        startVoiceListen();
+      }
+    };
+    recognitionRef.current = rec;
+    try {
+      rec.start();
+    } catch {
+      /* ignore */
     }
+  }
+
+  function startVoiceChat() {
+    const SR = getSR();
+    if (!SR) {
+      setError("Voice conversation isn't supported in this browser.");
+      return;
+    }
+    if (listening) stopDictation("cancel");
+    setVoiceChat(true);
+    voiceChatRef.current = true;
+    startVoiceListen();
+  }
+
+  function stopVoiceChat() {
+    voiceChatRef.current = false;
+    setVoiceChat(false);
+    recognitionRef.current?.stop?.();
+    recognitionRef.current = null;
+    if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+    setLiveTranscript("");
+  }
+
+  function stopGeneration() {
+    abortRef.current?.abort();
   }
 
   function setLast(fn: (m: ChatMsg) => ChatMsg) {
@@ -410,7 +564,7 @@ export function ChatClient({
     });
   }
 
-  async function consumeResponse(res: Response) {
+  async function consumeResponse(res: Response): Promise<string | null> {
     if (!res.ok || !res.body) {
       const j = await res.json().catch(() => ({}));
       throw new Error(j.error || `Request failed (${res.status})`);
@@ -475,13 +629,22 @@ export function ChatClient({
     }
     setLast((m) => ({ ...m, streaming: false }));
     if (newId) window.history.replaceState({}, "", `/chat/${newId}`);
-    if (voiceModeRef.current && assistantText.trim()) speak(assistantText);
+    if (voiceChatRef.current) {
+      if (assistantText.trim()) {
+        speak(assistantText, () => {
+          if (voiceChatRef.current) startVoiceListen();
+        });
+      } else {
+        startVoiceListen();
+      }
+    }
+    return newId;
   }
 
-  async function send() {
-    const text = input.trim();
+  async function send(textArg?: string) {
+    const text = (textArg ?? input).trim();
     if ((!text && attachments.length === 0) || sending) return;
-    if (listening) recognitionRef.current?.stop?.();
+    const wasNew = !convIdRef.current;
     setError(null);
     setPending([]);
     setSending(true);
@@ -500,10 +663,15 @@ export function ChatClient({
     setInput("");
     setAttachments([]);
 
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    let createdId: string | null = null;
+    let aborted = false;
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: ctrl.signal,
         body: JSON.stringify({
           conversationId: convIdRef.current,
           projectId,
@@ -519,13 +687,23 @@ export function ChatClient({
           team,
         }),
       });
-      await consumeResponse(res);
+      createdId = await consumeResponse(res);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send");
+      if ((err as Error)?.name === "AbortError") {
+        aborted = true;
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to send");
+      }
       setLast((m) => ({ ...m, streaming: false }));
+      if (voiceChatRef.current) startVoiceListen();
     } finally {
       setSending(false);
-      router.refresh();
+      abortRef.current = null;
+      // On a manual stop, keep the partial reply rather than reloading the full one.
+      if (!aborted) {
+        if (wasNew && createdId) router.replace(`/chat/${createdId}`);
+        else if (convIdRef.current) router.refresh();
+      }
     }
   }
 
@@ -541,19 +719,28 @@ export function ChatClient({
       ...prev,
       { role: "assistant", text: "", thinking: "", activities: [], streaming: true },
     ]);
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    let aborted = false;
     try {
       const res = await fetch("/api/chat/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: ctrl.signal,
         body: JSON.stringify({ conversationId: convIdRef.current, decisions }),
       });
       await consumeResponse(res);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to confirm");
+      if ((err as Error)?.name === "AbortError") {
+        aborted = true;
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to confirm");
+      }
       setLast((m) => ({ ...m, streaming: false }));
     } finally {
       setSending(false);
-      router.refresh();
+      abortRef.current = null;
+      if (!aborted) router.refresh();
     }
   }
 
@@ -577,10 +764,14 @@ export function ChatClient({
       { role: "assistant", text: "", thinking: "", activities: [], streaming: true },
     ]);
 
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    let aborted = false;
     try {
       const res = await fetch("/api/chat/edit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: ctrl.signal,
         body: JSON.stringify({
           conversationId: convIdRef.current,
           editMessageId: messageId,
@@ -591,11 +782,16 @@ export function ChatClient({
       });
       await consumeResponse(res);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save edit");
+      if ((err as Error)?.name === "AbortError") {
+        aborted = true;
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to save edit");
+      }
       setLast((m) => ({ ...m, streaming: false }));
     } finally {
       setSending(false);
-      router.refresh();
+      abortRef.current = null;
+      if (!aborted) router.refresh();
     }
   }
 
@@ -648,20 +844,34 @@ export function ChatClient({
                   )}
                 >
                   {isEditing ? (
-                    <div className="w-80 max-w-full space-y-2 rounded-2xl border border-brand-300 bg-white p-3 dark:border-brand-700 dark:bg-neutral-800">
+                    <div className="w-96 max-w-full space-y-2 rounded-2xl border border-brand-300 bg-white p-3 dark:border-brand-700 dark:bg-neutral-900">
                       <Textarea
                         autoFocus
                         rows={3}
                         value={editText}
                         onChange={(e) => setEditText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            submitEdit(m.id!, i);
+                          }
+                          if (e.key === "Escape") setEditingId(null);
+                        }}
                       />
-                      <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="secondary" onClick={() => setEditingId(null)}>
-                          Cancel
-                        </Button>
-                        <Button size="sm" onClick={() => submitEdit(m.id!, i)}>
-                          <Check size={14} /> Save
-                        </Button>
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="flex items-start gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                          <Info size={13} className="mt-0.5 shrink-0" />
+                          Editing this message will create a new conversation branch. You can switch
+                          between branches using the arrow navigation buttons.
+                        </p>
+                        <div className="flex shrink-0 gap-2">
+                          <Button size="sm" variant="secondary" onClick={() => setEditingId(null)}>
+                            Cancel
+                          </Button>
+                          <Button size="sm" onClick={() => submitEdit(m.id!, i)}>
+                            Save
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ) : (
@@ -695,55 +905,60 @@ export function ChatClient({
                     </div>
                   )}
 
-                  {m.role === "user" && m.id && !isEditing && (
-                    <div className="absolute -top-3 right-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                      <button
-                        type="button"
-                        title="Edit"
-                        onClick={() => {
-                          setEditingId(m.id!);
-                          setEditText(m.text);
-                        }}
-                        className="rounded-full border border-neutral-200 bg-white p-1.5 text-neutral-500 shadow-sm hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
-                      >
-                        <Pencil size={12} />
-                      </button>
-                      <button
-                        type="button"
-                        title="Delete"
-                        onClick={() => onDeleteMessage(m.id!)}
-                        className="rounded-full border border-neutral-200 bg-white p-1.5 text-neutral-500 shadow-sm hover:bg-red-50 hover:text-red-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-red-950"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  )}
                 </div>
 
-                {m.branchInfo && m.branchInfo.total > 1 && (
-                  <div className="mt-1 flex items-center gap-1 text-xs text-neutral-400">
+                {/* User message action row: edit / delete + branch nav */}
+                {m.role === "user" && m.id && !isEditing && (
+                  <div className="mt-1 flex items-center gap-1 pr-1 text-neutral-400 opacity-60 transition-opacity hover:opacity-100">
+                    {m.branchInfo && m.branchInfo.total > 1 && (
+                      <div className="mr-1 flex items-center gap-0.5 text-xs">
+                        <button
+                          type="button"
+                          disabled={m.branchInfo.current <= 1}
+                          onClick={() =>
+                            onSwitchBranch(m.branchInfo!.siblingIds[m.branchInfo!.current - 2])
+                          }
+                          className="rounded p-0.5 hover:bg-neutral-100 disabled:opacity-30 dark:hover:bg-neutral-800"
+                          title="Previous branch"
+                        >
+                          <ChevronLeft size={14} />
+                        </button>
+                        <span className="tabular-nums">
+                          {m.branchInfo.current}/{m.branchInfo.total}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={m.branchInfo.current >= m.branchInfo.total}
+                          onClick={() =>
+                            onSwitchBranch(m.branchInfo!.siblingIds[m.branchInfo!.current])
+                          }
+                          className="rounded p-0.5 hover:bg-neutral-100 disabled:opacity-30 dark:hover:bg-neutral-800"
+                          title="Next branch"
+                        >
+                          <ChevronRight size={14} />
+                        </button>
+                      </div>
+                    )}
                     <button
                       type="button"
-                      disabled={m.branchInfo.current <= 1}
-                      onClick={() =>
-                        onSwitchBranch(m.branchInfo!.siblingIds[m.branchInfo!.current - 2])
-                      }
-                      className="rounded p-0.5 hover:bg-neutral-100 disabled:opacity-30 dark:hover:bg-neutral-800"
+                      title="Edit"
+                      disabled={sending}
+                      onClick={() => {
+                        setEditingId(m.id!);
+                        setEditText(m.text);
+                      }}
+                      className="rounded p-1 hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-40 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
                     >
-                      <ChevronLeft size={14} />
+                      <Pencil size={14} />
                     </button>
-                    <span>
-                      {m.branchInfo.current}/{m.branchInfo.total}
-                    </span>
                     <button
                       type="button"
-                      disabled={m.branchInfo.current >= m.branchInfo.total}
-                      onClick={() =>
-                        onSwitchBranch(m.branchInfo!.siblingIds[m.branchInfo!.current])
-                      }
-                      className="rounded p-0.5 hover:bg-neutral-100 disabled:opacity-30 dark:hover:bg-neutral-800"
+                      title="Delete"
+                      disabled={sending}
+                      onClick={() => onDeleteMessage(m.id!)}
+                      className="rounded p-1 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-950"
                     >
-                      <ChevronRight size={14} />
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 )}
@@ -794,6 +1009,49 @@ export function ChatClient({
               {error}
             </p>
           )}
+
+          {voiceChat && (
+            <div className="flex flex-col items-center gap-4 rounded-3xl border border-brand-200 bg-white p-8 shadow-sm dark:border-brand-800 dark:bg-neutral-900">
+              <div
+                className={cn(
+                  "flex h-20 w-20 items-center justify-center rounded-full transition-colors",
+                  voiceStatus === "listening"
+                    ? "animate-pulse bg-brand-100 text-brand-600 dark:bg-brand-950 dark:text-brand-300"
+                    : voiceStatus === "speaking"
+                      ? "animate-pulse bg-green-100 text-green-600 dark:bg-green-950 dark:text-green-300"
+                      : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400",
+                )}
+              >
+                {voiceStatus === "speaking" ? (
+                  <AudioLines size={32} />
+                ) : voiceStatus === "thinking" ? (
+                  <Spinner />
+                ) : (
+                  <Mic size={32} />
+                )}
+              </div>
+              <div className="text-sm font-medium text-neutral-600 dark:text-neutral-300">
+                {voiceStatus === "listening"
+                  ? "Listening…"
+                  : voiceStatus === "thinking"
+                    ? "Thinking…"
+                    : "Speaking…"}
+              </div>
+              <p className="min-h-[1.5rem] max-w-md text-center text-sm text-neutral-500 dark:text-neutral-400">
+                {liveTranscript || "Say something — I'll reply out loud."}
+              </p>
+              <button
+                type="button"
+                onClick={stopVoiceChat}
+                className="rounded-full bg-neutral-800 px-5 py-2 text-sm font-medium text-white hover:bg-neutral-700 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-white"
+              >
+                End voice
+              </button>
+            </div>
+          )}
+
+          {!voiceChat && (
+          <>
           {attachments.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
               {attachments.map((a, i) => (
@@ -829,7 +1087,37 @@ export function ChatClient({
               onChange={onPickFiles}
             />
 
-            {/* Controls row */}
+            {/* Dictation recording bar */}
+            {listening ? (
+            <div className="mt-1 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => stopDictation("cancel")}
+                title="Cancel"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-500 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+              >
+                <X size={18} />
+              </button>
+              <div className="flex flex-1 items-center gap-2">
+                <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-red-500" />
+                <canvas
+                  ref={waveCanvasRef}
+                  width={280}
+                  height={32}
+                  className="h-8 w-full"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => stopDictation("send")}
+                title="Finish & send"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-600 text-white hover:bg-brand-700"
+              >
+                <Check size={18} />
+              </button>
+            </div>
+            ) : (
+            /* Controls row */
             <div className="mt-1 flex items-center justify-between">
               {/* Left: "+" menu */}
               <div className="relative">
@@ -1126,7 +1414,7 @@ export function ChatClient({
                 )}
               </div>
 
-              {/* Right: model picker + voice + send */}
+              {/* Right: model picker + voice + send/stop */}
               <div className="flex items-center gap-1">
                 <ModelPicker
                   models={models}
@@ -1138,41 +1426,43 @@ export function ChatClient({
                 />
                 <button
                   type="button"
-                  onClick={toggleListening}
-                  title={listening ? "Stop dictation" : "Dictate (speech to text)"}
-                  className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-full transition-colors",
-                    listening
-                      ? "bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400"
-                      : "text-neutral-500 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
-                  )}
+                  onClick={startDictation}
+                  title="Dictate (speech to text)"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-neutral-500 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
                 >
-                  <Mic size={17} className={listening ? "animate-pulse" : ""} />
+                  <Mic size={17} />
                 </button>
                 <button
                   type="button"
-                  onClick={toggleVoiceMode}
-                  title={voiceMode ? "Voice replies on (read responses aloud)" : "Read responses aloud"}
-                  className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-full transition-colors",
-                    voiceMode
-                      ? "bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
-                      : "text-neutral-500 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
-                  )}
+                  onClick={startVoiceChat}
+                  title="Voice conversation (talk with the AI)"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-neutral-500 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
                 >
-                  <AudioLines size={17} className={speaking ? "animate-pulse" : ""} />
+                  <AudioLines size={17} />
                 </button>
-                <button
-                  type="button"
-                  onClick={send}
-                  disabled={!canSend}
-                  title="Send"
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-white transition-colors hover:bg-brand-700 disabled:opacity-40"
-                >
-                  {sending ? <Spinner className="border-white border-t-white/40" /> : <Send size={16} />}
-                </button>
+                {sending ? (
+                  <button
+                    type="button"
+                    onClick={stopGeneration}
+                    title="Stop generating"
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-800 text-white transition-colors hover:bg-neutral-700 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-white"
+                  >
+                    <Square size={13} className="fill-current" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => send()}
+                    disabled={!canSend}
+                    title="Send"
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-white transition-colors hover:bg-brand-700 disabled:opacity-40"
+                  >
+                    <Send size={16} />
+                  </button>
+                )}
               </div>
             </div>
+            )}
           </div>
 
           {!googleConnected && (
@@ -1182,6 +1472,8 @@ export function ChatClient({
               </Link>{" "}
               to create real Docs, Sheets & send email from chat.
             </p>
+          )}
+          </>
           )}
         </div>
       </div>
