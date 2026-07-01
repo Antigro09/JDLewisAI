@@ -5,6 +5,8 @@ import {
   integer,
   jsonb,
   boolean,
+  index,
+  vector,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
@@ -344,10 +346,17 @@ export const meetingEmbeddings = pgTable("meeting_embeddings", {
   sourceType: text("source_type").notNull(),
   sourceId: text("source_id").notNull(),
   content: text("content").notNull(),
-  embedding: jsonb("embedding").$type<number[]>(),
+  // pgvector column for semantic memory (spec §12). Requires the pgvector
+  // extension: run `CREATE EXTENSION IF NOT EXISTS vector;` before db:push.
+  embedding: vector("embedding", { dimensions: 1536 }),
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => ({
+  embeddingIdx: index("meeting_embeddings_embedding_idx").using(
+    "hnsw",
+    t.embedding.op("vector_cosine_ops"),
+  ),
+}));
 export type MeetingEmbedding = typeof meetingEmbeddings.$inferSelect;
 
 export const projectFiles = pgTable("project_files", {

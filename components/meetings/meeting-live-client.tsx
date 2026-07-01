@@ -14,6 +14,7 @@ import {
   Send,
   ShieldAlert,
   Square,
+  Users,
 } from "lucide-react";
 import { Markdown } from "@/components/markdown";
 import { Badge, Button, Card, Input, Label, Select, Textarea } from "@/components/ui";
@@ -121,13 +122,16 @@ function floatToPcm16(input: Float32Array) {
 export function MeetingLiveClient({
   initialBundle,
   googleConnected = false,
+  speakerProfiles = [],
 }: {
   initialBundle: Bundle;
   googleConnected?: boolean;
+  speakerProfiles?: { id: string; displayName: string }[];
 }) {
   const [bundle, setBundle] = useState(initialBundle);
   const [speakerLabel, setSpeakerLabel] = useState("Speaker A");
   const [speakerName, setSpeakerName] = useState("");
+  const [assignNames, setAssignNames] = useState<Record<string, string>>({});
   const [text, setText] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -150,6 +154,30 @@ export function MeetingLiveClient({
     const res = await fetch(`/api/meetings/${bundle.meeting.id}`, { cache: "no-store" });
     if (!res.ok) return;
     setBundle((await res.json()) as Bundle);
+  }
+
+  async function assignSpeaker(label: string) {
+    const displayName = (assignNames[label] ?? "").trim();
+    if (!displayName) return;
+    setBusy(`speaker-${label}`);
+    setError(null);
+    try {
+      const match = speakerProfiles.find(
+        (p) => p.displayName.toLowerCase() === displayName.toLowerCase(),
+      );
+      const res = await fetch(`/api/meetings/${bundle.meeting.id}/speakers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ speakerLabel: label, displayName, profileId: match?.id }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Could not assign speaker");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not assign speaker");
+    } finally {
+      setBusy(null);
+    }
   }
 
   useEffect(() => {
@@ -470,6 +498,22 @@ export function MeetingLiveClient({
     new Set(["Speaker A", "Speaker B", "Speaker C", ...bundle.participants.map((p) => p.speakerLabel)]),
   );
 
+  // Distinct diarization labels actually present, with any resolved name.
+  const detectedSpeakers = Array.from(
+    new Set([
+      ...bundle.segments.map((s) => s.speakerLabel),
+      ...bundle.participants.map((p) => p.speakerLabel),
+    ]),
+  )
+    .filter(Boolean)
+    .sort()
+    .map((label) => {
+      const named = bundle.segments.find((s) => s.speakerLabel === label && s.speakerName)
+        ?.speakerName;
+      const participant = bundle.participants.find((p) => p.speakerLabel === label);
+      return { label, name: named || participant?.displayName || null };
+    });
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -738,6 +782,50 @@ export function MeetingLiveClient({
                 </div>
               ))}
             </div>
+          </Card>
+
+          <Card className="p-4">
+            <h2 className="mb-3 flex items-center gap-2 font-medium text-neutral-900 dark:text-neutral-100">
+              <Users size={17} />
+              Speakers
+            </h2>
+            <p className="mb-3 text-xs text-neutral-400">
+              Name each detected speaker once — the name is written onto the transcript and
+              remembered for your company.
+            </p>
+            {detectedSpeakers.length === 0 ? (
+              <p className="text-sm text-neutral-500">No speakers detected yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {detectedSpeakers.map((s) => (
+                  <div key={s.label} className="flex items-center gap-2">
+                    <span className="w-20 shrink-0 text-xs text-neutral-500">{s.label}</span>
+                    <input
+                      list="speaker-profiles"
+                      defaultValue={s.name ?? ""}
+                      placeholder="Assign a name"
+                      onChange={(e) =>
+                        setAssignNames((prev) => ({ ...prev, [s.label]: e.target.value }))
+                      }
+                      className="h-8 flex-1 rounded-md border border-neutral-300 bg-white px-2 text-sm dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+                    />
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy === `speaker-${s.label}`}
+                      onClick={() => assignSpeaker(s.label)}
+                    >
+                      Save
+                    </Button>
+                  </div>
+                ))}
+                <datalist id="speaker-profiles">
+                  {speakerProfiles.map((p) => (
+                    <option key={p.id} value={p.displayName} />
+                  ))}
+                </datalist>
+              </div>
+            )}
           </Card>
 
           <Card className="p-4">
