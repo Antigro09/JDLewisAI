@@ -558,6 +558,15 @@ export const skills = pgTable("skills", {
   instructions: text("instructions").notNull(),
   // Applied to chats by default (user can still toggle per-conversation).
   defaultActive: boolean("default_active").notNull().default(true),
+  // Anthropic Skills API linkage. Set when a skill with reference files is
+  // uploaded via client.beta.skills.create so it can run in a code-execution
+  // container at runtime; null for plain text-instruction packs.
+  anthropicSkillId: text("anthropic_skill_id"),
+  anthropicSkillVersion: text("anthropic_skill_version"),
+  // True when this skill must execute in an Anthropic code-execution container
+  // (it ships reference files/scripts). Text-only packs stay false and are
+  // injected into the system prompt with zero container cost.
+  execInContainer: boolean("exec_in_container").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 export type Skill = typeof skills.$inferSelect;

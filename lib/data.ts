@@ -169,8 +169,12 @@ export async function buildChatSystem(
   let projectInstructions: string | null = null;
 
   const activeSkills = await resolveActiveSkills(user, conv.skillIds ?? null);
+  // Container-executed skills (uploaded to the Skills API) load their own
+  // instructions inside the sandbox — only inject text-only packs here.
   const skillsPrompt = buildSkillsPrompt(
-    activeSkills.map((s) => ({ name: s.name, instructions: s.instructions })),
+    activeSkills
+      .filter((s) => !(s.execInContainer && s.anthropicSkillId))
+      .map((s) => ({ name: s.name, instructions: s.instructions })),
   );
 
   const memoryPrompt = buildMemoryPrompt(await listMemories(user));

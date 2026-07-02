@@ -203,6 +203,13 @@ export default async function CustomizePage({
                           active
                         </Badge>
                       )}
+                      {s.execInContainer && s.anthropicSkillId && (
+                        <span title="Runs in an Anthropic code-execution sandbox when active">
+                          <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                            sandbox
+                          </Badge>
+                        </span>
+                      )}
                     </div>
                   </div>
                   {s.description && (

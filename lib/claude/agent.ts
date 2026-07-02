@@ -135,6 +135,8 @@ export type RunAgentOptions = {
   researchMode?: boolean;
   /** Extended thinking toggle (default on for models that support it). */
   thinking?: boolean;
+  /** Anthropic Skills API skills to load in a code-execution container. */
+  containerSkills?: { skillId: string; version: string }[];
   /** Abort signal — stops generation when the client cancels the request. */
   signal?: AbortSignal;
 };
@@ -174,15 +176,26 @@ export async function* runAgentTurn(
     if (opts.toolNames) g = g.filter((d) => opts.toolNames!.includes(d.name));
     tools.push(...g);
   }
+  // Container-executed skills (Skills API) run in a code-execution sandbox on
+  // Opus/Sonnet-tier models. Haiku can't run code execution, so skip there.
+  const containerSkillsActive =
+    (opts.containerSkills?.length ?? 0) > 0 && !model.id.includes("haiku");
+  if (containerSkillsActive) {
+    tools.push({ type: "code_execution_20260521", name: "code_execution" });
+  }
+
   const webSearchEnabled = opts.webSearch || opts.researchMode;
   if (webSearchEnabled) {
-    // Dynamic-filtering variant on Opus/Sonnet 4.6+, basic on Haiku. The
-    // _20260209 variant defaults to the code-execution caller and requires
-    // allowed_callers: ["direct"] on models without programmatic tool calling,
-    // or the API rejects the request — so pin it to direct invocation.
-    if (model.id.includes("haiku")) {
+    // The dynamic-filtering web_search_20260209 runs its own code execution
+    // under the hood; stacking that with the skills sandbox confuses the model,
+    // so fall back to the basic variant whenever a container skill is active
+    // (also used on Haiku, which lacks the dynamic-filtering variant).
+    if (model.id.includes("haiku") || containerSkillsActive) {
       tools.push({ type: "web_search_20250305", name: "web_search" });
     } else {
+      // The _20260209 variant defaults to the code-execution caller and requires
+      // allowed_callers: ["direct"] on models without programmatic tool calling,
+      // or the API rejects the request — so pin it to direct invocation.
       tools.push({
         type: "web_search_20260209",
         name: "web_search",
@@ -219,9 +232,24 @@ export async function* runAgentTurn(
       if (model.adaptiveThinking && opts.thinking !== false)
         params.thinking = { type: "adaptive", display: "summarized" };
       if (effort) params.output_config = { effort };
+      // Skills API requires the beta Messages endpoint with both betas and a
+      // container that lists the skills to load into the sandbox.
+      if (containerSkillsActive) {
+        params.betas = ["code-execution-2025-08-25", "skills-2025-10-02"];
+        params.container = {
+          skills: opts.containerSkills!.map((s) => ({
+            type: "custom",
+            skill_id: s.skillId,
+            version: s.version,
+          })),
+        };
+      }
 
+      const messagesApi = containerSkillsActive
+        ? anthropic().beta.messages
+        : anthropic().messages;
       const stream = (
-        anthropic().messages as unknown as {
+        messagesApi as unknown as {
           stream: (
             p: unknown,
             o?: { signal?: AbortSignal },
