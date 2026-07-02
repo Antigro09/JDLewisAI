@@ -133,6 +133,8 @@ export type RunAgentOptions = {
   webSearch?: boolean;
   /** Deeper multi-step investigation: raises the step cap and forces web search on. */
   researchMode?: boolean;
+  /** Extended thinking toggle (default on for models that support it). */
+  thinking?: boolean;
   /** Abort signal — stops generation when the client cancels the request. */
   signal?: AbortSignal;
 };
@@ -203,7 +205,7 @@ export async function* runAgentTurn(
         messages: apiMessages,
       };
       if (tools.length) params.tools = tools;
-      if (model.adaptiveThinking)
+      if (model.adaptiveThinking && opts.thinking !== false)
         params.thinking = { type: "adaptive", display: "summarized" };
       if (effort) params.output_config = { effort };
 
