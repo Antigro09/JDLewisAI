@@ -10,8 +10,10 @@ import { isGoogleConnected } from "@/lib/google/client";
 import { effectivePlugins } from "@/lib/plugins";
 import { buildChatSystem } from "@/lib/data";
 import { resolveContainerSkills } from "@/lib/skills";
+import { resolveActiveMcpServers } from "@/lib/mcp/connections";
 import { truncate } from "@/lib/utils";
 import {
+  MCP_TOOLS_NOTE,
   RESEARCH_MODE_NOTE,
   SELF_CHECK_NOTE,
   VOICE_MODE_NOTE,
@@ -160,6 +162,7 @@ export async function POST(req: Request) {
     ? body.skillIds
     : (conv?.skillIds ?? null);
   const containerSkills = await resolveContainerSkills(user, activeSkillIds);
+  const mcp = await resolveActiveMcpServers(user.id);
 
   const plugins = await effectivePlugins(user.id);
   const googleEnabled =
@@ -180,6 +183,8 @@ export async function POST(req: Request) {
   // Research mode's prompt already covers web usage in depth; only add the
   // lighter web-tools note when plain web search is on without research mode.
   if (webSearch && !researchMode) system = `${system}\n\n${WEB_TOOLS_NOTE}`;
+  if (mcp.servers.length)
+    system = `${system}\n\n${MCP_TOOLS_NOTE}\nConnected apps: ${mcp.servers.map((s) => s.name).join(", ")}.`;
   if (researchMode) system = `${system}\n\n${RESEARCH_MODE_NOTE}`;
   if (body.selfCheck) system = `${system}\n\n${SELF_CHECK_NOTE}`;
   if (body.voice) system = `${system}\n\n${VOICE_MODE_NOTE}`;
@@ -235,6 +240,7 @@ export async function POST(req: Request) {
       webSearch,
       researchMode,
       containerSkills,
+      mcp,
       thinking: body.thinking,
       liveAttachments: attachments,
       liveText: message,

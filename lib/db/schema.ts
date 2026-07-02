@@ -635,6 +635,24 @@ export const pluginSettings = pgTable("plugin_settings", {
 });
 export type PluginSetting = typeof pluginSettings.$inferSelect;
 
+/** Per-user remote MCP server connections (Connections marketplace). */
+export const mcpConnections = pgTable("mcp_connections", {
+  id: id(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  // Catalog entry id (e.g. "notion") or "custom" for a hand-entered server.
+  serverId: text("server_id").notNull(),
+  // Unique-per-user identifier used as the mcp_server_name in requests.
+  name: text("name").notNull(),
+  url: text("url").notNull(),
+  // Encrypted OAuth/bearer token (via lib/crypto); null for no-auth servers.
+  authTokenEnc: text("auth_token_enc"),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type McpConnection = typeof mcpConnections.$inferSelect;
+
 export type SubmittalStatus =
   | "PENDING"
   | "APPROVED"
