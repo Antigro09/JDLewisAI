@@ -137,6 +137,11 @@ export type RunAgentOptions = {
   thinking?: boolean;
   /** Anthropic Skills API skills to load in a code-execution container. */
   containerSkills?: { skillId: string; version: string }[];
+  /** Connected remote MCP servers (mcp-client-2025-11-20). */
+  mcp?: {
+    servers: unknown[];
+    toolsets: unknown[];
+  };
   /** Abort signal — stops generation when the client cancels the request. */
   signal?: AbortSignal;
 };
@@ -183,6 +188,11 @@ export async function* runAgentTurn(
   if (containerSkillsActive) {
     tools.push({ type: "code_execution_20260521", name: "code_execution" });
   }
+
+  // Remote MCP servers: Anthropic connects to them server-side; each server
+  // needs exactly one mcp_toolset entry in `tools`.
+  const mcpActive = (opts.mcp?.servers.length ?? 0) > 0;
+  if (mcpActive) tools.push(...opts.mcp!.toolsets);
 
   const webSearchEnabled = opts.webSearch || opts.researchMode;
   if (webSearchEnabled) {
@@ -232,10 +242,11 @@ export async function* runAgentTurn(
       if (model.adaptiveThinking && opts.thinking !== false)
         params.thinking = { type: "adaptive", display: "summarized" };
       if (effort) params.output_config = { effort };
-      // Skills API requires the beta Messages endpoint with both betas and a
-      // container that lists the skills to load into the sandbox.
+      // Skills API + MCP connector both require the beta Messages endpoint.
+      // Collect the betas each needs and add their request params.
+      const betas: string[] = [];
       if (containerSkillsActive) {
-        params.betas = ["code-execution-2025-08-25", "skills-2025-10-02"];
+        betas.push("code-execution-2025-08-25", "skills-2025-10-02");
         params.container = {
           skills: opts.containerSkills!.map((s) => ({
             type: "custom",
@@ -244,8 +255,14 @@ export async function* runAgentTurn(
           })),
         };
       }
+      if (mcpActive) {
+        betas.push("mcp-client-2025-11-20");
+        params.mcp_servers = opts.mcp!.servers;
+      }
+      const useBeta = betas.length > 0;
+      if (useBeta) params.betas = betas;
 
-      const messagesApi = containerSkillsActive
+      const messagesApi = useBeta
         ? anthropic().beta.messages
         : anthropic().messages;
       const stream = (

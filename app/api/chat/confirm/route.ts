@@ -8,7 +8,8 @@ import { isGoogleConnected } from "@/lib/google/client";
 import { effectivePlugins } from "@/lib/plugins";
 import { buildChatSystem } from "@/lib/data";
 import { resolveContainerSkills } from "@/lib/skills";
-import { WEB_TOOLS_NOTE } from "@/lib/claude/system";
+import { resolveActiveMcpServers } from "@/lib/mcp/connections";
+import { WEB_TOOLS_NOTE, MCP_TOOLS_NOTE } from "@/lib/claude/system";
 import { createNotification, maybeSendEmailNotification } from "@/lib/notifications";
 
 export const runtime = "nodejs";
@@ -60,12 +61,15 @@ export async function POST(req: Request) {
     plugins.google !== false && (await isGoogleConnected(user.id));
   const webSearch = plugins.web_search === true;
   const containerSkills = await resolveContainerSkills(user, conv.skillIds);
+  const mcp = await resolveActiveMcpServers(user.id);
   let system = await buildChatSystem(
     user,
     { projectId: conv.projectId, skillIds: conv.skillIds },
     googleEnabled,
   );
   if (webSearch) system = `${system}\n\n${WEB_TOOLS_NOTE}`;
+  if (mcp.servers.length)
+    system = `${system}\n\n${MCP_TOOLS_NOTE}\nConnected apps: ${mcp.servers.map((s) => s.name).join(", ")}.`;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -91,6 +95,7 @@ export async function POST(req: Request) {
           googleEnabled,
           webSearch,
           containerSkills,
+          mcp,
           signal: req.signal,
         })) {
           send(ev);

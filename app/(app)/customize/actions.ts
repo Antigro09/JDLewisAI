@@ -9,6 +9,13 @@ import { requireUser, requireAdmin } from "@/lib/auth/server";
 import { PLUGINS, setUserPlugin } from "@/lib/plugins";
 import { parseSkillMd } from "@/lib/skills/parse-skill-md";
 import { createAnthropicSkill, type UploadableFile } from "@/lib/skills/anthropic-skill";
+import {
+  addMcpConnection,
+  removeMcpConnection,
+  setMcpConnectionEnabled,
+  uniqueMcpName,
+} from "@/lib/mcp/connections";
+import { getCatalogEntry } from "@/lib/mcp/catalog";
 import { BUILTIN_SKILLS } from "@/lib/skills/builtin";
 import { createMemory, deleteMemory, MEMORY_CATEGORIES } from "@/lib/memory";
 import { createPrompt, deletePrompt } from "@/lib/prompts";
@@ -25,6 +32,42 @@ export async function savePluginPrefs(formData: FormData) {
   for (const p of PLUGINS) {
     await setUserPlugin(user.id, p.id, formData.get(`plugin_${p.id}`) === "on");
   }
+  revalidatePath("/customize");
+}
+
+export type McpConnectState = { error?: string };
+
+export async function connectMcpServer(
+  _prev: McpConnectState,
+  formData: FormData,
+): Promise<McpConnectState> {
+  const user = await requireUser();
+  const serverId = String(formData.get("serverId") ?? "custom").trim() || "custom";
+  const url = String(formData.get("url") ?? "").trim();
+  const token = String(formData.get("token") ?? "").trim();
+  const catalog = getCatalogEntry(serverId);
+  const label = catalog?.label || String(formData.get("name") ?? "").trim();
+
+  if (!label) return { error: "Give the server a name." };
+  if (!/^https:\/\//i.test(url)) return { error: "Server URL must start with https://" };
+
+  const name = await uniqueMcpName(user.id, catalog ? serverId : label);
+  await addMcpConnection(user.id, { serverId, name, url, token: token || undefined });
+  revalidatePath("/customize");
+  return {};
+}
+
+export async function disconnectMcpServer(formData: FormData) {
+  const user = await requireUser();
+  const id = String(formData.get("id") ?? "");
+  if (id) await removeMcpConnection(user.id, id);
+  revalidatePath("/customize");
+}
+
+export async function toggleMcpServer(formData: FormData) {
+  const user = await requireUser();
+  const id = String(formData.get("id") ?? "");
+  if (id) await setMcpConnectionEnabled(user.id, id, formData.get("enabled") === "on");
   revalidatePath("/customize");
 }
 

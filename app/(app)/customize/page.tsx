@@ -12,6 +12,9 @@ import { listMemories, MEMORY_CATEGORIES } from "@/lib/memory";
 import { listPrompts } from "@/lib/prompts";
 import { Input, Label, Select, Textarea } from "@/components/ui";
 import { SkillUploadForm } from "@/components/customize/skill-upload-form";
+import { McpConnectForm } from "@/components/customize/mcp-connect-form";
+import { listMcpConnections } from "@/lib/mcp/connections";
+import { MCP_CATALOG } from "@/lib/mcp/catalog";
 import {
   disconnectGoogle,
   savePluginPrefs,
@@ -20,6 +23,9 @@ import {
   addPrompt,
   removePrompt,
   installBuiltinSkills,
+  connectMcpServer,
+  disconnectMcpServer,
+  toggleMcpServer,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +59,7 @@ export default async function CustomizePage({
   const status = google ? STATUS_MESSAGES[google] : undefined;
   const isAdmin = user.role === "ADMIN";
 
-  const [account, configured, plugins, skills, memories, savedPrompts] =
+  const [account, configured, plugins, skills, memories, savedPrompts, mcpConns] =
     await Promise.all([
       getGoogleAccount(user.id),
       Promise.resolve(googleConfigured()),
@@ -61,7 +67,9 @@ export default async function CustomizePage({
       listAvailableSkills(user),
       listMemories(user),
       listPrompts(user),
+      listMcpConnections(user.id),
     ]);
+  const connectedServerIds = new Set(mcpConns.map((c) => c.serverId));
 
   return (
     <PageShell
@@ -121,6 +129,91 @@ export default async function CustomizePage({
                 <code>GOOGLE_REDIRECT_URI</code> to enable this.
               </p>
             )}
+          </div>
+        </Card>
+      )}
+
+      {tab === "connections" && (
+        <Card className="mt-6 max-w-2xl p-6">
+          <h2 className="font-semibold text-neutral-900 dark:text-neutral-100">
+            Connected apps (MCP)
+          </h2>
+          <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+            Connect remote MCP servers so the AI can use their tools in chat.
+            Most services use OAuth — get an access token from the service (or
+            via the MCP inspector) and paste it here; it&apos;s stored encrypted.
+          </p>
+
+          {mcpConns.length > 0 && (
+            <div className="mt-4 space-y-2">
+              {mcpConns.map((c) => (
+                <div
+                  key={c.id}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-neutral-200 px-4 py-3 dark:border-neutral-800"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                      {c.name}
+                      {!c.enabled && <Badge className="bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">off</Badge>}
+                    </div>
+                    <div className="truncate text-xs text-neutral-400">{c.url}</div>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <form action={toggleMcpServer}>
+                      <input type="hidden" name="id" value={c.id} />
+                      <input type="hidden" name="enabled" value={c.enabled ? "" : "on"} />
+                      <SubmitButton variant="secondary" size="sm">
+                        {c.enabled ? "Disable" : "Enable"}
+                      </SubmitButton>
+                    </form>
+                    <form action={disconnectMcpServer}>
+                      <input type="hidden" name="id" value={c.id} />
+                      <SubmitButton variant="secondary" size="sm">
+                        Remove
+                      </SubmitButton>
+                    </form>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-5 space-y-1">
+            <div className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+              Add from catalog
+            </div>
+            {MCP_CATALOG.map((entry) => (
+              <details
+                key={entry.id}
+                className="rounded-lg border border-neutral-200 px-4 py-2 dark:border-neutral-800"
+              >
+                <summary className="cursor-pointer text-sm">
+                  <span className="font-medium text-neutral-800 dark:text-neutral-100">
+                    {entry.label}
+                  </span>
+                  {connectedServerIds.has(entry.id) && (
+                    <span className="ml-2 text-xs text-green-600 dark:text-green-400">
+                      connected
+                    </span>
+                  )}
+                  <span className="ml-2 text-neutral-500 dark:text-neutral-400">
+                    {entry.description}
+                  </span>
+                </summary>
+                <McpConnectForm
+                  action={connectMcpServer}
+                  serverId={entry.id}
+                  defaultUrl={entry.url}
+                  tokenHint={entry.tokenHint}
+                />
+              </details>
+            ))}
+            <details className="rounded-lg border border-neutral-200 px-4 py-2 dark:border-neutral-800">
+              <summary className="cursor-pointer text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                Custom server…
+              </summary>
+              <McpConnectForm action={connectMcpServer} serverId="custom" custom />
+            </details>
           </div>
         </Card>
       )}

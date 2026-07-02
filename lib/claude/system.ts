@@ -30,6 +30,10 @@ real (don't just print the content) and share the resulting link. Read tools run
 create/edit/send actions are shown to the user for one-click approval before they run, so go ahead
 and call them when appropriate. After acting, briefly confirm what you did and include the link.`;
 
+export const MCP_TOOLS_NOTE = `Connected apps are available through MCP tools. When the user's
+request maps to one of these services, use its tools to fetch or act on real data instead of
+guessing, then briefly confirm what you did.`;
+
 export const WEB_TOOLS_NOTE = `Web tools are available: use "web_search" to find current
 information and "web_fetch" to read a specific URL the user gives you or that a search surfaces.
 Prefer authoritative/primary sources, and cite the source (title + link) for any external fact you
