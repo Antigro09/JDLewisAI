@@ -9,6 +9,7 @@ import { resolveModel } from "@/lib/claude/models";
 import { isGoogleConnected } from "@/lib/google/client";
 import { effectivePlugins } from "@/lib/plugins";
 import { buildChatSystem } from "@/lib/data";
+import { resolveContainerSkills } from "@/lib/skills";
 import { truncate } from "@/lib/utils";
 import {
   RESEARCH_MODE_NOTE,
@@ -158,6 +159,7 @@ export async function POST(req: Request) {
   const activeSkillIds = Array.isArray(body.skillIds)
     ? body.skillIds
     : (conv?.skillIds ?? null);
+  const containerSkills = await resolveContainerSkills(user, activeSkillIds);
 
   const plugins = await effectivePlugins(user.id);
   const googleEnabled =
@@ -232,6 +234,7 @@ export async function POST(req: Request) {
       googleEnabled,
       webSearch,
       researchMode,
+      containerSkills,
       thinking: body.thinking,
       liveAttachments: attachments,
       liveText: message,

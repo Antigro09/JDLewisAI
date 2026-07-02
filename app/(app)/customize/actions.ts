@@ -8,6 +8,7 @@ import { googleAccounts, skills, skillFiles } from "@/lib/db/schema";
 import { requireUser, requireAdmin } from "@/lib/auth/server";
 import { PLUGINS, setUserPlugin } from "@/lib/plugins";
 import { parseSkillMd } from "@/lib/skills/parse-skill-md";
+import { createAnthropicSkill, type UploadableFile } from "@/lib/skills/anthropic-skill";
 import { BUILTIN_SKILLS } from "@/lib/skills/builtin";
 import { createMemory, deleteMemory, MEMORY_CATEGORIES } from "@/lib/memory";
 import { createPrompt, deletePrompt } from "@/lib/prompts";
@@ -69,6 +70,7 @@ export async function createSkillFromMarkdown(
   }
 
   let skillId: string;
+  const refBuffers: UploadableFile[] = [];
   try {
     const inserted = await db
       .insert(skills)
@@ -92,17 +94,44 @@ export async function createSkillFromMarkdown(
     });
 
     for (const f of referenceFiles) {
-      const data = Buffer.from(await f.arrayBuffer()).toString("base64");
+      const bytes = Buffer.from(await f.arrayBuffer());
+      refBuffers.push({
+        name: f.name,
+        mime: f.type || "application/octet-stream",
+        bytes,
+      });
       await db.insert(skillFiles).values({
         skillId,
         name: f.name,
         mime: f.type || "application/octet-stream",
-        data,
+        data: bytes.toString("base64"),
         kind: "reference",
       });
     }
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Could not save skill." };
+  }
+
+  // Skills that ship reference files run in an Anthropic code-execution
+  // container — upload them to the Skills API and flag exec_in_container. This
+  // is best-effort: on failure the skill stays a local text pack. Text-only
+  // skills skip the upload entirely (zero container cost).
+  if (refBuffers.length > 0) {
+    const created = await createAnthropicSkill({
+      displayTitle: nameOverride || parsed.name,
+      skillMd: rawText,
+      referenceFiles: refBuffers,
+    });
+    if (created) {
+      await db
+        .update(skills)
+        .set({
+          anthropicSkillId: created.id,
+          anthropicSkillVersion: created.version,
+          execInContainer: true,
+        })
+        .where(eq(skills.id, skillId));
+    }
   }
 
   redirect("/customize?tab=skills");

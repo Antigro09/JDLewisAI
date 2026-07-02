@@ -27,6 +27,24 @@ export async function resolveActiveSkills(
   return available.filter((s) => set.has(s.id));
 }
 
+/**
+ * Active skills that must run in an Anthropic code-execution container
+ * (uploaded to the Skills API). Text-only packs are excluded — they're injected
+ * into the system prompt instead. Returned in the container.skills shape.
+ */
+export async function resolveContainerSkills(
+  user: AppUser,
+  skillIds: string[] | null,
+): Promise<{ skillId: string; version: string }[]> {
+  const active = await resolveActiveSkills(user, skillIds);
+  return active
+    .filter((s) => s.execInContainer && s.anthropicSkillId)
+    .map((s) => ({
+      skillId: s.anthropicSkillId!,
+      version: s.anthropicSkillVersion ?? "latest",
+    }));
+}
+
 export async function listSkillFiles(skillId: string) {
   return db
     .select({
