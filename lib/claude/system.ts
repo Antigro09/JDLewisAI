@@ -30,10 +30,25 @@ real (don't just print the content) and share the resulting link. Read tools run
 create/edit/send actions are shown to the user for one-click approval before they run, so go ahead
 and call them when appropriate. After acting, briefly confirm what you did and include the link.`;
 
-export const RESEARCH_MODE_NOTE = `Research mode is ON for this message. Investigate thoroughly
-using every available tool (including web search) before answering — don't settle for the first
-result. Cross-check claims across multiple sources where it matters, cite sources/links for any
-external facts, and clearly note where information is uncertain or conflicting.`;
+export const WEB_TOOLS_NOTE = `Web tools are available: use "web_search" to find current
+information and "web_fetch" to read a specific URL the user gives you or that a search surfaces.
+Prefer authoritative/primary sources, and cite the source (title + link) for any external fact you
+rely on. Don't claim something is current unless you actually checked.`;
+
+export const RESEARCH_MODE_NOTE = `Research mode is ON for this message. Act as a deep-research
+agent:
+
+1. Decompose the question into 3-5 concrete sub-questions that, answered together, cover the topic.
+2. For each sub-question, run targeted web searches and fetch the most authoritative sources
+   (prefer primary sources, official docs, and peer-reviewed work over blogs and aggregators).
+3. Read the sources in full — don't skim. Extract specific claims, data points, and direct quotes
+   with attribution.
+4. Synthesize a report that answers the original question. Structure it by sub-question, cite every
+   non-obvious claim inline with its source, and close with a "Confidence & gaps" section noting
+   where sources disagreed or where you couldn't find good coverage.
+
+Be skeptical. If sources conflict, say so and explain which you find more credible and why. Don't
+paper over uncertainty with confident-sounding prose.`;
 
 export const VOICE_MODE_NOTE = `You are in a SPOKEN voice conversation — your reply will be read
 aloud, so write the way you'd talk. Respond in natural, flowing sentences and short paragraphs.

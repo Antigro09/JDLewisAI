@@ -9,6 +9,7 @@ import { resolveModel } from "@/lib/claude/models";
 import { isGoogleConnected } from "@/lib/google/client";
 import { effectivePlugins } from "@/lib/plugins";
 import { buildChatSystem } from "@/lib/data";
+import { WEB_TOOLS_NOTE } from "@/lib/claude/system";
 import { appendMessage } from "@/lib/chat/branches";
 import { streamAgentTurn } from "@/lib/chat/run-turn";
 
@@ -113,11 +114,12 @@ export async function POST(req: Request) {
   const plugins = await effectivePlugins(user.id);
   const googleEnabled = plugins.google !== false && (await isGoogleConnected(user.id));
   const webSearch = plugins.web_search === true;
-  const system = await buildChatSystem(
+  let system = await buildChatSystem(
     user,
     { projectId: conv.projectId, skillIds: conv.skillIds },
     googleEnabled,
   );
+  if (webSearch) system = `${system}\n\n${WEB_TOOLS_NOTE}`;
 
   const stream = streamAgentTurn({
     agentOptions: {
