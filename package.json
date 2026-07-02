@@ -9,6 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
+    "db:enable-vector": "tsx lib/db/enable-vector.ts",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx lib/db/seed.ts",
     "desktop:dev": "npm --prefix electron run dev",
