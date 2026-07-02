@@ -37,6 +37,7 @@ type Body = {
   mode?: string;
   team?: boolean;
   voice?: boolean;
+  thinking?: boolean;
 };
 
 export async function POST(req: Request) {
@@ -223,6 +224,7 @@ export async function POST(req: Request) {
       googleEnabled,
       webSearch,
       researchMode,
+      thinking: body.thinking,
       liveAttachments: attachments,
       liveText: message,
       signal: req.signal,

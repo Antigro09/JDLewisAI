@@ -32,6 +32,9 @@ import {
   SlidersHorizontal,
   Square,
   Info,
+  Copy,
+  RotateCcw,
+  Volume2,
 } from "lucide-react";
 import { Markdown } from "@/components/markdown";
 import { Button, Card, Spinner, Textarea } from "@/components/ui";
@@ -46,6 +49,7 @@ export type ModelOption = {
   enabled: boolean;
   efforts: string[];
   adaptiveThinking: boolean;
+  tier?: "primary" | "more";
 };
 
 export type PendingTool = {
@@ -157,8 +161,27 @@ const MODEL_TAGLINES: Record<string, string> = {
 
 function fmtEffort(e: string) {
   if (!e) return "";
-  if (e === "xhigh") return "XHigh";
+  if (e === "xhigh") return "Extra";
   return e[0].toUpperCase() + e.slice(1);
+}
+
+/** Small pill toggle used for Extended / Thinking. */
+function Switch({ on }: { on: boolean }) {
+  return (
+    <span
+      className={cn(
+        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
+        on ? "bg-brand-600" : "bg-neutral-300 dark:bg-neutral-600",
+      )}
+    >
+      <span
+        className={cn(
+          "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform",
+          on ? "translate-x-4" : "translate-x-0.5",
+        )}
+      />
+    </span>
+  );
 }
 
 /** Compact model + effort picker (bottom-right of the composer), opens upward. */
@@ -167,19 +190,25 @@ function ModelPicker({
   model,
   effort,
   efforts,
+  thinking,
   onModelChange,
   onEffortChange,
+  onThinkingChange,
 }: {
   models: ModelOption[];
   model: string;
   effort: string;
   efforts: string[];
+  thinking: boolean;
   onModelChange: (id: string) => void;
   onEffortChange: (effort: string) => void;
+  onThinkingChange: (thinking: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [effortOpen, setEffortOpen] = useState(false);
+  const [sub, setSub] = useState<"effort" | "more" | null>(null);
   const currentModel = models.find((m) => m.id === model);
+  const primary = models.filter((m) => (m.tier ?? "primary") !== "more");
+  const more = models.filter((m) => m.tier === "more");
   // Models without granular effort levels (Haiku) show an "Extended" toggle
   // instead; it's on whenever a reasoning effort is set.
   const hasEfforts = efforts.length > 0;
@@ -193,11 +222,66 @@ function ModelPicker({
     return () => document.removeEventListener("click", close);
   }, [open]);
   useEffect(() => {
-    if (!open) setEffortOpen(false);
+    if (!open) setSub(null);
   }, [open]);
 
   const rowCls =
     "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-700/60";
+
+  function modelRow(m: ModelOption) {
+    const selected = m.id === model;
+    const tagline = MODEL_TAGLINES[m.id] ?? m.blurb;
+    return (
+      <button
+        key={m.id}
+        type="button"
+        disabled={!m.enabled}
+        onClick={() => {
+          if (!m.enabled) return;
+          onModelChange(m.id);
+          setOpen(false);
+        }}
+        className={cn(
+          "flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left",
+          m.enabled ? "hover:bg-neutral-100 dark:hover:bg-neutral-700/60" : "cursor-default",
+        )}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "text-sm font-medium",
+                m.enabled
+                  ? "text-neutral-900 dark:text-neutral-100"
+                  : "text-neutral-400 dark:text-neutral-500",
+              )}
+            >
+              {m.label}
+            </span>
+            {!m.enabled && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400 dark:bg-neutral-700 dark:text-neutral-400">
+                <Info size={11} />
+                Currently unavailable
+              </span>
+            )}
+          </div>
+          <div
+            className={cn(
+              "mt-0.5 text-xs",
+              m.enabled
+                ? "text-neutral-500 dark:text-neutral-400"
+                : "text-neutral-400 dark:text-neutral-600",
+            )}
+          >
+            {tagline}
+          </div>
+        </div>
+        {selected && (
+          <Check size={16} className="mt-0.5 shrink-0 text-brand-600 dark:text-brand-400" />
+        )}
+      </button>
+    );
+  }
 
   return (
     <div className="relative">
@@ -216,105 +300,25 @@ function ModelPicker({
       {open && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute bottom-full right-0 z-20 mb-1 w-72 overflow-hidden rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-800"
+          className="absolute bottom-full right-0 z-20 mb-1 w-72 rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-800"
         >
-          {models.map((m) => {
-            const selected = m.id === model;
-            const tagline = MODEL_TAGLINES[m.id] ?? m.blurb;
-            return (
-              <button
-                key={m.id}
-                type="button"
-                disabled={!m.enabled}
-                onClick={() => {
-                  if (!m.enabled) return;
-                  onModelChange(m.id);
-                  setOpen(false);
-                }}
-                className={cn(
-                  "flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left",
-                  m.enabled
-                    ? "hover:bg-neutral-100 dark:hover:bg-neutral-700/60"
-                    : "cursor-default",
-                )}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={cn(
-                        "text-sm font-medium",
-                        m.enabled
-                          ? "text-neutral-900 dark:text-neutral-100"
-                          : "text-neutral-400 dark:text-neutral-500",
-                      )}
-                    >
-                      {m.label}
-                    </span>
-                    {!m.enabled && (
-                      <span className="inline-flex items-center gap-1 rounded-md bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400 dark:bg-neutral-700 dark:text-neutral-400">
-                        <Info size={11} />
-                        Currently unavailable
-                      </span>
-                    )}
-                  </div>
-                  <div
-                    className={cn(
-                      "mt-0.5 text-xs",
-                      m.enabled
-                        ? "text-neutral-500 dark:text-neutral-400"
-                        : "text-neutral-400 dark:text-neutral-600",
-                    )}
-                  >
-                    {tagline}
-                  </div>
-                </div>
-                {selected && (
-                  <Check size={16} className="mt-0.5 shrink-0 text-brand-600 dark:text-brand-400" />
-                )}
-              </button>
-            );
-          })}
+          {primary.map(modelRow)}
 
           <div className="my-1 border-t border-neutral-100 dark:border-neutral-700" />
 
           {hasEfforts ? (
-            <div>
-              <button
-                type="button"
-                className={rowCls}
-                onClick={() => setEffortOpen((s) => !s)}
-              >
-                <span className="flex-1 font-medium">Effort</span>
-                <span className="text-neutral-400">{fmtEffort(effort)}</span>
-                <ChevronRight
-                  size={15}
-                  className={cn(
-                    "text-neutral-400 transition-transform",
-                    effortOpen && "rotate-90",
-                  )}
-                />
-              </button>
-              {effortOpen && (
-                <div className="mb-1 ml-3 mr-1 space-y-0.5 border-l border-neutral-200 pl-2 dark:border-neutral-700">
-                  {efforts.map((e) => (
-                    <button
-                      key={e}
-                      type="button"
-                      onClick={() => {
-                        onEffortChange(e);
-                        setOpen(false);
-                      }}
-                      className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700/60"
-                    >
-                      <span className="flex-1">{fmtEffort(e)}</span>
-                      {effort === e && (
-                        <Check size={14} className="text-brand-600 dark:text-brand-400" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <button
+              type="button"
+              className={rowCls}
+              onClick={() => setSub((s) => (s === "effort" ? null : "effort"))}
+            >
+              <span className="flex-1 font-medium">Effort</span>
+              <span className="text-neutral-400">{fmtEffort(effort)}</span>
+              <ChevronRight
+                size={15}
+                className={cn("text-neutral-400", sub === "effort" && "text-brand-500")}
+              />
+            </button>
           ) : (
             <button
               type="button"
@@ -329,28 +333,101 @@ function ModelPicker({
                   Always uses deep reasoning
                 </div>
               </div>
-              <span
-                className={cn(
-                  "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors",
-                  extendedOn ? "bg-brand-600" : "bg-neutral-300 dark:bg-neutral-600",
-                )}
-              >
-                <span
-                  className={cn(
-                    "inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform",
-                    extendedOn ? "translate-x-4" : "translate-x-0.5",
-                  )}
-                />
-              </span>
+              <Switch on={extendedOn} />
             </button>
           )}
 
           <div className="my-1 border-t border-neutral-100 dark:border-neutral-700" />
 
-          <div className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-neutral-400 dark:text-neutral-500">
-            <span className="flex-1">More models</span>
-            <ChevronRight size={15} className="text-neutral-400" />
-          </div>
+          <button
+            type="button"
+            className={rowCls}
+            onClick={() => setSub((s) => (s === "more" ? null : "more"))}
+          >
+            <span className="flex-1 font-medium">More models</span>
+            <ChevronRight
+              size={15}
+              className={cn("text-neutral-400", sub === "more" && "text-brand-500")}
+            />
+          </button>
+
+          {/* Effort flyout */}
+          {sub === "effort" && hasEfforts && (
+            <div className="absolute right-full top-0 mr-2 w-72 rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-800">
+              <p className="px-3 pb-2 pt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                Higher effort means more thorough responses, but takes longer and uses your
+                limits faster.
+              </p>
+              {efforts.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  onClick={() => onEffortChange(e)}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-neutral-800 hover:bg-neutral-100 dark:text-neutral-100 dark:hover:bg-neutral-700/60"
+                >
+                  <span className="font-medium">{fmtEffort(e)}</span>
+                  {e === "medium" && (
+                    <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-400 dark:bg-neutral-700">
+                      Default
+                    </span>
+                  )}
+                  {e === "max" && <Info size={12} className="text-neutral-400" />}
+                  <span className="flex-1" />
+                  {effort === e && (
+                    <Check size={16} className="text-brand-600 dark:text-brand-400" />
+                  )}
+                </button>
+              ))}
+              {currentModel?.adaptiveThinking && (
+                <>
+                  <div className="my-1 border-t border-neutral-100 dark:border-neutral-700" />
+                  <button
+                    type="button"
+                    onClick={() => onThinkingChange(!thinking)}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-700/60"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                        Thinking
+                      </div>
+                      <div className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+                        Can think for more complex tasks
+                      </div>
+                    </div>
+                    <Switch on={thinking} />
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* More models flyout */}
+          {sub === "more" && (
+            <div className="absolute right-full top-0 mr-2 w-52 rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-800">
+              {more.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-neutral-400">No additional models.</div>
+              ) : (
+                more.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    disabled={!m.enabled}
+                    onClick={() => {
+                      if (!m.enabled) return;
+                      onModelChange(m.id);
+                      setOpen(false);
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-neutral-800 hover:bg-neutral-100 disabled:opacity-40 dark:text-neutral-100 dark:hover:bg-neutral-700/60"
+                  >
+                    <span className="flex-1">{m.label}</span>
+                    {m.id === model && (
+                      <Check size={16} className="text-brand-600 dark:text-brand-400" />
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -400,6 +477,8 @@ export function ChatClient({
   const [skillIds, setSkillIds] = useState<string[]>(initialActiveSkillIds);
   const [error, setError] = useState<string | null>(null);
   const [researchMode, setResearchMode] = useState(false);
+  const [thinking, setThinking] = useState(true);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [webSearch, setWebSearch] = useState(initialWebSearch);
   const [selfCheck, setSelfCheck] = useState(false);
   const [mode, setMode] = useState("standard");
@@ -862,6 +941,7 @@ export function ChatClient({
           selfCheck,
           mode,
           team,
+          thinking,
           voice: voiceChatRef.current,
         }),
       });
@@ -931,9 +1011,10 @@ export function ChatClient({
     }
   }
 
-  async function submitEdit(messageId: string, index: number) {
-    const text = editText.trim();
-    if (!text || sending) return;
+  // Re-run a turn from a user message (edit or retry). `index` is that user
+  // message's position in the active path.
+  async function runEdit(messageId: string, index: number, text: string) {
+    if (!text.trim() || sending) return;
     setEditingId(null);
     setError(null);
     setPending([]);
@@ -975,6 +1056,31 @@ export function ChatClient({
     }
   }
 
+  function submitEdit(messageId: string, index: number) {
+    void runEdit(messageId, index, editText.trim());
+  }
+
+  // Retry regenerates the assistant reply: from a user message it re-runs that
+  // message; from an assistant message it re-runs the preceding user message.
+  function retryMessage(index: number) {
+    if (sending) return;
+    let userIdx = index;
+    if (messages[index]?.role === "assistant") userIdx = index - 1;
+    const um = messages[userIdx];
+    if (!um || um.role !== "user" || !um.id) return;
+    void runEdit(um.id, userIdx, um.text);
+  }
+
+  async function copyText(id: string, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      window.setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1200);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
   async function onDeleteMessage(messageId: string) {
     if (!convIdRef.current || sending) return;
     if (!window.confirm("Delete this message and everything after it?")) return;
@@ -994,6 +1100,9 @@ export function ChatClient({
   // A menu row + optional trailing check
   const menuRowCls =
     "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-700/60";
+  // Compact icon button used in the per-message action rows.
+  const msgActionCls =
+    "rounded p-1 hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-40 dark:hover:bg-neutral-800 dark:hover:text-neutral-200";
 
   return (
     <div className="flex h-full flex-col bg-neutral-50 dark:bg-neutral-950">
@@ -1087,7 +1196,7 @@ export function ChatClient({
 
                 </div>
 
-                {/* User message action row: edit / delete + branch nav */}
+                {/* User message action row: copy / retry / edit / delete + branch nav */}
                 {m.role === "user" && m.id && !isEditing && (
                   <div className="mt-1 flex items-center gap-1 pr-1 text-neutral-400 opacity-60 transition-opacity hover:opacity-100">
                     {m.branchInfo && m.branchInfo.total > 1 && (
@@ -1121,13 +1230,30 @@ export function ChatClient({
                     )}
                     <button
                       type="button"
+                      title="Copy"
+                      onClick={() => copyText(m.id!, m.text)}
+                      className={msgActionCls}
+                    >
+                      {copiedId === m.id ? <Check size={14} /> : <Copy size={14} />}
+                    </button>
+                    <button
+                      type="button"
+                      title="Retry"
+                      disabled={sending}
+                      onClick={() => retryMessage(i)}
+                      className={msgActionCls}
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                    <button
+                      type="button"
                       title="Edit"
                       disabled={sending}
                       onClick={() => {
                         setEditingId(m.id!);
                         setEditText(m.text);
                       }}
-                      className="rounded p-1 hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-40 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                      className={msgActionCls}
                     >
                       <Pencil size={14} />
                     </button>
@@ -1139,6 +1265,37 @@ export function ChatClient({
                       className="rounded p-1 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-950"
                     >
                       <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
+
+                {/* Assistant message action row: copy / retry / read aloud */}
+                {m.role === "assistant" && m.id && !m.streaming && m.text && (
+                  <div className="mt-1 flex items-center gap-1 text-neutral-400 opacity-60 transition-opacity hover:opacity-100">
+                    <button
+                      type="button"
+                      title="Copy"
+                      onClick={() => copyText(m.id!, m.text)}
+                      className={msgActionCls}
+                    >
+                      {copiedId === m.id ? <Check size={14} /> : <Copy size={14} />}
+                    </button>
+                    <button
+                      type="button"
+                      title="Retry"
+                      disabled={sending}
+                      onClick={() => retryMessage(i)}
+                      className={msgActionCls}
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      title="Read aloud"
+                      onClick={() => speak(m.text)}
+                      className={msgActionCls}
+                    >
+                      <Volume2 size={14} />
                     </button>
                   </div>
                 )}
@@ -1601,8 +1758,10 @@ export function ChatClient({
                   model={model}
                   effort={effort}
                   efforts={efforts}
+                  thinking={thinking}
                   onModelChange={onModelChange}
                   onEffortChange={setEffort}
+                  onThinkingChange={setThinking}
                 />
                 <button
                   type="button"
