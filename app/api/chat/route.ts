@@ -10,7 +10,12 @@ import { isGoogleConnected } from "@/lib/google/client";
 import { effectivePlugins } from "@/lib/plugins";
 import { buildChatSystem } from "@/lib/data";
 import { truncate } from "@/lib/utils";
-import { RESEARCH_MODE_NOTE, SELF_CHECK_NOTE, VOICE_MODE_NOTE } from "@/lib/claude/system";
+import {
+  RESEARCH_MODE_NOTE,
+  SELF_CHECK_NOTE,
+  VOICE_MODE_NOTE,
+  WEB_TOOLS_NOTE,
+} from "@/lib/claude/system";
 import { getMode } from "@/lib/claude/modes";
 import { appendMessage } from "@/lib/chat/branches";
 import { streamAgentTurn } from "@/lib/chat/run-turn";
@@ -170,6 +175,9 @@ export async function POST(req: Request) {
   );
   const mode = getMode(body.mode);
   if (mode?.note) system = `${system}\n\n${mode.note}`;
+  // Research mode's prompt already covers web usage in depth; only add the
+  // lighter web-tools note when plain web search is on without research mode.
+  if (webSearch && !researchMode) system = `${system}\n\n${WEB_TOOLS_NOTE}`;
   if (researchMode) system = `${system}\n\n${RESEARCH_MODE_NOTE}`;
   if (body.selfCheck) system = `${system}\n\n${SELF_CHECK_NOTE}`;
   if (body.voice) system = `${system}\n\n${VOICE_MODE_NOTE}`;

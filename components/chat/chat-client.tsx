@@ -206,6 +206,7 @@ function ModelPicker({
 }) {
   const [open, setOpen] = useState(false);
   const [sub, setSub] = useState<"effort" | "more" | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const currentModel = models.find((m) => m.id === model);
   const primary = models.filter((m) => (m.tier ?? "primary") !== "more");
   const more = models.filter((m) => m.tier === "more");
@@ -217,9 +218,16 @@ function ModelPicker({
 
   useEffect(() => {
     if (!open) return;
-    const close = () => setOpen(false);
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
+    // Close only on clicks outside the picker (including its flyouts, which are
+    // rendered inside rootRef). Using contains() instead of a bare document
+    // listener keeps the popover open when an effort/model option is clicked.
+    const onDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
   useEffect(() => {
     if (!open) setSub(null);
@@ -284,13 +292,10 @@ function ModelPicker({
   }
 
   return (
-    <div className="relative">
+    <div className="relative" ref={rootRef}>
       <button
         type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((o) => !o);
-        }}
+        onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
       >
         {currentModel?.label ?? model}

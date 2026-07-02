@@ -7,6 +7,7 @@ import { runAgentTurn, applyPendingDecisions } from "@/lib/claude/agent";
 import { isGoogleConnected } from "@/lib/google/client";
 import { effectivePlugins } from "@/lib/plugins";
 import { buildChatSystem } from "@/lib/data";
+import { WEB_TOOLS_NOTE } from "@/lib/claude/system";
 import { createNotification, maybeSendEmailNotification } from "@/lib/notifications";
 
 export const runtime = "nodejs";
@@ -57,11 +58,12 @@ export async function POST(req: Request) {
   const googleEnabled =
     plugins.google !== false && (await isGoogleConnected(user.id));
   const webSearch = plugins.web_search === true;
-  const system = await buildChatSystem(
+  let system = await buildChatSystem(
     user,
     { projectId: conv.projectId, skillIds: conv.skillIds },
     googleEnabled,
   );
+  if (webSearch) system = `${system}\n\n${WEB_TOOLS_NOTE}`;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({

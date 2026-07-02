@@ -176,11 +176,22 @@ export async function* runAgentTurn(
   }
   const webSearchEnabled = opts.webSearch || opts.researchMode;
   if (webSearchEnabled) {
-    // Dynamic-filtering variant on Opus/Sonnet 4.6+, basic on Haiku.
-    const wsType = model.id.includes("haiku")
-      ? "web_search_20250305"
-      : "web_search_20260209";
-    tools.push({ type: wsType, name: "web_search" });
+    // Dynamic-filtering variant on Opus/Sonnet 4.6+, basic on Haiku. The
+    // _20260209 variant defaults to the code-execution caller and requires
+    // allowed_callers: ["direct"] on models without programmatic tool calling,
+    // or the API rejects the request — so pin it to direct invocation.
+    if (model.id.includes("haiku")) {
+      tools.push({ type: "web_search_20250305", name: "web_search" });
+    } else {
+      tools.push({
+        type: "web_search_20260209",
+        name: "web_search",
+        allowed_callers: ["direct"],
+      });
+    }
+    // Fetch and read specific URLs the user references (not just search).
+    // Basic GA variant: ZDR-eligible and defaults to direct caller.
+    tools.push({ type: "web_fetch_20250910", name: "web_fetch", max_uses: 5 });
   }
   const maxSteps = opts.researchMode ? 16 : MAX_STEPS;
   let inTok = 0;
