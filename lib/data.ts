@@ -23,6 +23,7 @@ export function modelOptions(): ModelOption[] {
     enabled: m.enabled,
     efforts: m.efforts,
     adaptiveThinking: m.adaptiveThinking,
+    tier: m.tier ?? "primary",
   }));
 }
 
@@ -32,7 +33,7 @@ export function resolveDefaults(personalization?: {
 } | null): { model: string; effort: string } {
   let model = personalization?.defaultModel || DEFAULT_MODEL;
   if (!getModel(model)?.enabled) model = DEFAULT_MODEL;
-  const effort = personalization?.defaultEffort || "high";
+  const effort = personalization?.defaultEffort || "medium";
   return { model, effort };
 }
 

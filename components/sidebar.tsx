@@ -98,7 +98,14 @@ export function Sidebar({
         collapsed ? "w-16" : "w-64",
       )}
     >
-      <div className="flex items-center gap-2 px-4 py-4">
+      <div
+        className={cn(
+          "py-4",
+          collapsed
+            ? "flex flex-col items-center gap-2 px-2"
+            : "flex items-center gap-2 px-4",
+        )}
+      >
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 font-bold text-white">
           C
         </div>
