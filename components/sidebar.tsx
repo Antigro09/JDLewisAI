@@ -19,6 +19,7 @@ import {
   HelpCircle,
   ClipboardList,
   FilePlus2,
+  Layers,
   CalendarDays,
   Scale,
   Search,
@@ -45,6 +46,7 @@ const PRIMARY_NAV = [
 const MORE_NAV = [
   { href: "/scopes", label: "Scopes of Work", icon: FileText },
   { href: "/invoices", label: "Invoices", icon: Receipt },
+  { href: "/invoice-rollup", label: "Invoice Roll-Up", icon: Layers },
   { href: "/plans", label: "Plan Reader", icon: Map },
   { href: "/material-takeoff", label: "Material Takeoff", icon: Scale },
   { href: "/calculators", label: "Calculators", icon: Calculator },
