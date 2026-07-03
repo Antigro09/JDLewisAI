@@ -41,9 +41,16 @@ export function SidebarConversations() {
 
   useEffect(() => {
     if (!menuId) return;
-    const close = () => setMenuId(null);
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
+    // Close only on clicks outside the row menus. A bare document listener
+    // also fires for the "⋯" toggle and menu items (stopPropagation can't
+    // block it — React delegates events on the document itself), which
+    // clobbered the toggle so switching between row menus took two clicks.
+    const close = (e: MouseEvent) => {
+      if ((e.target as Element | null)?.closest?.("[data-conv-menu]")) return;
+      setMenuId(null);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
   }, [menuId]);
 
   if (!loaded) return null;
@@ -105,6 +112,7 @@ export function SidebarConversations() {
             <span className="truncate">{truncate(c.title, 28)}</span>
             <button
               type="button"
+              data-conv-menu
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -117,7 +125,10 @@ export function SidebarConversations() {
           </Link>
         )}
         {menuId === c.id && (
-          <div className="absolute right-0 top-full z-20 mt-1 w-36 rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-800">
+          <div
+            data-conv-menu
+            className="absolute right-0 top-full z-20 mt-1 w-36 rounded-lg border border-neutral-200 bg-white py-1 shadow-lg dark:border-neutral-700 dark:bg-neutral-800"
+          >
             <button
               type="button"
               onClick={() => {
