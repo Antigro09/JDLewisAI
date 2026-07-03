@@ -44,6 +44,15 @@ function scoreDetection({ processes = [], activeWindowTitle = "" }) {
     appName = appName || windowHit;
     reasons.push(`Active meeting window detected: ${windowHit}`);
   }
+  // Corroboration bonus: a meeting app process WITH a meeting-looking window
+  // in the foreground is the strongest signal this detector can observe
+  // (35 + 25 alone would sit at 60, below the 70 auto-start threshold — a
+  // desktop meeting could otherwise never trigger). Single weak signals still
+  // stay below the threshold.
+  if (processHit && windowHit) {
+    confidence += 10;
+    reasons.push("Process and window signals corroborate");
+  }
   return {
     likely: confidence >= 70,
     confidence: Math.min(100, confidence),

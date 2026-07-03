@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/server";
 import { getMeetingForUser } from "@/lib/meetings/access";
 import { sendLiveMeetingAudio } from "@/lib/meetings/live";
+import { StreamClosedError } from "@/lib/meetings/transcription";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +44,14 @@ export async function POST(
     await sendLiveMeetingAudio(id, audio);
     return NextResponse.json({ ok: true });
   } catch (err) {
+    // Dead stream is a distinct, recoverable condition: the client should call
+    // /stream/start again (or wait — a reconnect may already be in progress).
+    if (err instanceof StreamClosedError) {
+      return NextResponse.json(
+        { error: err.message, code: "stream_closed" },
+        { status: 409 },
+      );
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Could not send audio" },
       { status: 400 },

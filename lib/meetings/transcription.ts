@@ -18,6 +18,20 @@ export type TranscriptionSession = {
   endSession: () => Promise<void>;
 };
 
+export type StreamCloseReason =
+  | "provider_terminated"
+  | "socket_closed"
+  | "socket_error";
+
+/** Thrown by sendAudioChunk once the provider stream is gone, so callers can
+ *  tell "stream needs restarting" apart from other failures. */
+export class StreamClosedError extends Error {
+  constructor(reason: StreamCloseReason) {
+    super(`Transcription stream closed (${reason}).`);
+    this.name = "StreamClosedError";
+  }
+}
+
 export type TranscriptionProvider = {
   name: string;
   startSession: (opts: {
@@ -26,6 +40,9 @@ export type TranscriptionProvider = {
     channels: number;
     onPartial: (event: TranscriptEvent) => void | Promise<void>;
     onFinal: (event: TranscriptEvent) => void | Promise<void>;
+    /** Fired exactly once when the stream dies unexpectedly (never fired for
+     *  an intentional endSession) — the hook for reconnect logic. */
+    onClose?: (reason: StreamCloseReason) => void;
   }) => Promise<TranscriptionSession>;
 };
 
@@ -79,6 +96,7 @@ export class AssemblyAiTranscriptionProvider implements TranscriptionProvider {
     channels: number;
     onPartial: (event: TranscriptEvent) => void | Promise<void>;
     onFinal: (event: TranscriptEvent) => void | Promise<void>;
+    onClose?: (reason: StreamCloseReason) => void;
   }): Promise<TranscriptionSession> {
     const apiKey = process.env.ASSEMBLYAI_API_KEY;
     if (!apiKey) {
@@ -101,7 +119,22 @@ export class AssemblyAiTranscriptionProvider implements TranscriptionProvider {
     const socket = new WebSocket(`wss://streaming.assemblyai.com/v3/ws?${params.toString()}`);
 
     let sessionId = opts.meetingId;
-    let closed = false;
+    let closedReason: StreamCloseReason | null = null;
+    let intentionalEnd = false;
+    let onCloseFired = false;
+
+    // Fire the consumer's onClose exactly once, and never for a close the
+    // consumer itself requested via endSession.
+    const notifyClosed = (reason: StreamCloseReason) => {
+      if (closedReason === null) closedReason = reason;
+      if (intentionalEnd || onCloseFired) return;
+      onCloseFired = true;
+      try {
+        opts.onClose?.(reason);
+      } catch {
+        // consumer callback must never break the socket teardown
+      }
+    };
 
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(
@@ -116,6 +149,14 @@ export class AssemblyAiTranscriptionProvider implements TranscriptionProvider {
         clearTimeout(timeout);
         reject(err);
       });
+    });
+
+    // Persistent error handler for the socket's whole life. Without one, a
+    // second post-open "error" event is an unhandled EventEmitter error that
+    // crashes the entire Node process (the once() above is consumed by the
+    // open handshake).
+    socket.on("error", () => {
+      notifyClosed("socket_error");
     });
 
     socket.on("message", async (raw: RawData) => {
@@ -133,24 +174,30 @@ export class AssemblyAiTranscriptionProvider implements TranscriptionProvider {
           else await opts.onPartial(ev);
           return;
         }
-        if (data.type === "Termination") closed = true;
+        if (data.type === "Termination") notifyClosed("provider_terminated");
       } catch {
         // Ignore malformed provider messages; socket errors are surfaced separately.
       }
     });
 
     socket.on("close", () => {
-      closed = true;
+      notifyClosed("socket_closed");
     });
 
     return {
       id: sessionId,
       sendAudioChunk: async (chunk) => {
-        if (closed || socket.readyState !== WebSocket.OPEN) return;
+        // Surface a dead stream instead of silently dropping audio — the
+        // caller decides whether to reconnect or mark the meeting degraded.
+        if (closedReason) throw new StreamClosedError(closedReason);
+        if (socket.readyState !== WebSocket.OPEN) {
+          throw new StreamClosedError("socket_closed");
+        }
         socket.send(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
       },
       endSession: async () => {
-        if (closed) return;
+        intentionalEnd = true;
+        if (closedReason) return;
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(JSON.stringify({ type: "Terminate" }));
         }
@@ -160,7 +207,7 @@ export class AssemblyAiTranscriptionProvider implements TranscriptionProvider {
           setTimeout(done, 1500);
         });
         socket.close();
-        closed = true;
+        if (closedReason === null) closedReason = "socket_closed";
       },
     };
   }

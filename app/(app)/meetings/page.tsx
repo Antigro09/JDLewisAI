@@ -13,9 +13,14 @@ import { formatDate } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 function statusClass(status: string) {
-  if (status === "active") return "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300";
-  if (status === "processing") return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
+  if (status === "active" || status === "detected")
+    return "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300";
+  if (status === "processing" || status === "degraded")
+    return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
   if (status === "complete") return "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300";
+  if (status === "failed" || status === "ended")
+    return "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
+  // abandoned + anything unknown
   return "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300";
 }
 
