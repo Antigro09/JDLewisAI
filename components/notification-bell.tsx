@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
@@ -30,6 +30,7 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notif[]>([]);
   const [unread, setUnread] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -51,9 +52,21 @@ export function NotificationBell() {
 
   useEffect(() => {
     if (!open) return;
-    const close = () => setOpen(false);
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
+    // Close only on clicks outside the bell + panel. A bare document listener
+    // also fires for clicks inside the panel (stopPropagation can't block it —
+    // React delegates events on the document itself), which closed the panel
+    // on actions like "Mark all read".
+    const close = (e: Event) => {
+      if (rootRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    // focusin covers keyboard users: tabbing/activating outside closes too.
+    document.addEventListener("mousedown", close);
+    document.addEventListener("focusin", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("focusin", close);
+    };
   }, [open]);
 
   async function onClickItem(n: Notif) {
@@ -73,13 +86,10 @@ export function NotificationBell() {
   }
 
   return (
-    <div className="relative">
+    <div className="relative" ref={rootRef}>
       <button
         type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((o) => !o);
-        }}
+        onClick={() => setOpen((o) => !o)}
         title="Notifications"
         className="relative rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
       >
@@ -91,10 +101,7 @@ export function NotificationBell() {
         )}
       </button>
       {open && (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className="absolute right-0 top-full z-30 mt-1 max-h-96 w-80 overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-800"
-        >
+        <div className="absolute right-0 top-full z-30 mt-1 max-h-96 w-80 overflow-y-auto rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-800">
           <div className="flex items-center justify-between border-b border-neutral-100 px-3 py-2 dark:border-neutral-700">
             <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
               Notifications

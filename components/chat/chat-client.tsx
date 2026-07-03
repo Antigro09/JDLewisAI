@@ -506,6 +506,7 @@ export function ChatClient({
   const convIdRef = useRef<string | null>(conversationId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const plusMenuRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const baseInputRef = useRef("");
@@ -534,12 +535,22 @@ export function ChatClient({
 
   useEffect(() => {
     if (!menuOpen) return;
-    const close = () => {
+    // Close only on clicks outside the "+" menu. A bare document listener
+    // also fires for clicks inside the popover (stopPropagation can't block
+    // it — React delegates events on the document itself), which closed the
+    // menu before submenus like Mode could open.
+    const close = (e: Event) => {
+      if (plusMenuRef.current?.contains(e.target as Node)) return;
       setMenuOpen(false);
       setMenuSection(null);
     };
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
+    // focusin covers keyboard users: tabbing/activating outside closes too.
+    document.addEventListener("mousedown", close);
+    document.addEventListener("focusin", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("focusin", close);
+    };
   }, [menuOpen]);
 
   // Stop any in-flight speech / recognition / mic on unmount.
@@ -992,7 +1003,7 @@ export function ChatClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: ctrl.signal,
-        body: JSON.stringify({ conversationId: convIdRef.current, decisions }),
+        body: JSON.stringify({ conversationId: convIdRef.current, decisions, mode }),
       });
       await consumeResponse(res);
     } catch (err) {
@@ -1044,6 +1055,7 @@ export function ChatClient({
           newText: text,
           model,
           effort,
+          mode,
         }),
       });
       await consumeResponse(res);
@@ -1462,11 +1474,11 @@ export function ChatClient({
             /* Controls row */
             <div className="mt-1 flex items-center justify-between">
               {/* Left: "+" menu */}
-              <div className="relative">
+              <div className="flex min-w-0 items-center gap-1.5">
+              <div className="relative" ref={plusMenuRef}>
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  onClick={() => {
                     setMenuOpen((o) => !o);
                     setMenuSection(null);
                   }}
@@ -1482,10 +1494,7 @@ export function ChatClient({
                 </button>
 
                 {menuOpen && (
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    className="absolute bottom-full left-0 z-20 mb-2 w-72 rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-800"
-                  >
+                  <div className="absolute bottom-full left-0 z-20 mb-2 w-72 rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-800">
                     <button
                       type="button"
                       className={menuRowCls}
@@ -1742,7 +1751,11 @@ export function ChatClient({
                             <button
                               key={m.id}
                               type="button"
-                              onClick={() => setMode(m.id)}
+                              onClick={() => {
+                                setMode(m.id);
+                                setMenuOpen(false);
+                                setMenuSection(null);
+                              }}
                               className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-700/60"
                             >
                               <span className="flex-1">{m.label}</span>
@@ -1754,6 +1767,23 @@ export function ChatClient({
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Active mode pill — click to clear back to Standard */}
+              {mode !== "standard" && (
+                <button
+                  type="button"
+                  onClick={() => setMode("standard")}
+                  title="Mode active — click to clear"
+                  className="flex min-w-0 items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2 py-1 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-300 dark:hover:bg-brand-900"
+                >
+                  <SlidersHorizontal size={12} className="shrink-0" />
+                  <span className="truncate">
+                    {REASONING_MODES.find((m) => m.id === mode)?.label ?? mode}
+                  </span>
+                  <X size={12} className="shrink-0" />
+                </button>
+              )}
               </div>
 
               {/* Right: model picker + voice + send/stop */}
