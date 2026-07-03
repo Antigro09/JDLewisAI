@@ -10,6 +10,7 @@ import { buildChatSystem } from "@/lib/data";
 import { resolveContainerSkills } from "@/lib/skills";
 import { resolveActiveMcpServers } from "@/lib/mcp/connections";
 import { WEB_TOOLS_NOTE, MCP_TOOLS_NOTE } from "@/lib/claude/system";
+import { getMode } from "@/lib/claude/modes";
 import { createNotification, maybeSendEmailNotification } from "@/lib/notifications";
 
 export const runtime = "nodejs";
@@ -19,6 +20,7 @@ export const maxDuration = 300;
 type Body = {
   conversationId?: string;
   decisions?: Record<string, "approve" | "reject">;
+  mode?: string;
 };
 
 export async function POST(req: Request) {
@@ -67,6 +69,8 @@ export async function POST(req: Request) {
     { projectId: conv.projectId, skillIds: conv.skillIds },
     googleEnabled,
   );
+  const mode = getMode(body.mode);
+  if (mode?.note) system = `${system}\n\n${mode.note}`;
   if (webSearch) system = `${system}\n\n${WEB_TOOLS_NOTE}`;
   if (mcp.servers.length)
     system = `${system}\n\n${MCP_TOOLS_NOTE}\nConnected apps: ${mcp.servers.map((s) => s.name).join(", ")}.`;

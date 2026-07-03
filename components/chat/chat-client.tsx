@@ -1003,7 +1003,7 @@ export function ChatClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: ctrl.signal,
-        body: JSON.stringify({ conversationId: convIdRef.current, decisions }),
+        body: JSON.stringify({ conversationId: convIdRef.current, decisions, mode }),
       });
       await consumeResponse(res);
     } catch (err) {
