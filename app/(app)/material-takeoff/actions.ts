@@ -8,7 +8,7 @@ import {
   extractLineItemsLight,
   aggregateLineItems,
   type TakeoffLineItem,
-} from "@/lib/tools/material-takeoff";
+} from "@/lib/tools/invoice-aggregation";
 import { recordUsage } from "@/lib/usage";
 
 export type TakeoffState = {
