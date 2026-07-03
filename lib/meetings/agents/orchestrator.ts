@@ -12,6 +12,7 @@ import {
   type MeetingState,
 } from "@/lib/db/schema";
 import { loadMeetingBundle, transcriptText } from "@/lib/meetings/access";
+import { transitionMeeting } from "@/lib/meetings/state";
 import { meetingToMarkdown } from "@/lib/meetings/export";
 import { createNotification } from "@/lib/notifications";
 import { truncate } from "@/lib/utils";
@@ -204,8 +205,12 @@ export async function generateMeetingMinutes(user: AppUser, meetingId: string) {
 
   await db
     .update(meetingSessions)
-    .set({ minutesMarkdown, qaNotes, status: "complete", updatedAt: new Date() })
+    .set({ minutesMarkdown, qaNotes, updatedAt: new Date() })
     .where(eq(meetingSessions.id, meetingId));
+  // Status moves via the state machine: only a closeout that's still the
+  // active runner may complete (a janitor-failed run keeps its failed status
+  // even though the minutes above are saved for inspection).
+  await transitionMeeting(meetingId, ["processing"], "complete");
 
   return { minutesMarkdown, qaNotes };
 }

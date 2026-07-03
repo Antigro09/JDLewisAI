@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { meetingSessions } from "@/lib/db/schema";
 import { getCurrentUser } from "@/lib/auth/server";
 import { getMeetingForUser } from "@/lib/meetings/access";
+import { END_ELIGIBLE_STATUSES, transitionMeeting } from "@/lib/meetings/state";
+import { stopLiveMeetingTranscription } from "@/lib/meetings/live";
 import { analyzeMeeting, generateMeetingMinutes } from "@/lib/meetings/analysis";
 import { indexMeetingMemory } from "@/lib/meetings/memory";
 import { recordAudit } from "@/lib/audit";
@@ -22,10 +21,31 @@ export async function POST(
   const meeting = await getMeetingForUser(user, id);
   if (!meeting) return NextResponse.json({ error: "Meeting not found" }, { status: 404 });
 
-  await db
-    .update(meetingSessions)
-    .set({ status: "processing", endedAt: new Date(), updatedAt: new Date() })
-    .where(eq(meetingSessions.id, id));
+  // Idempotency + single-runner guarantee: only the request that wins this
+  // compare-and-swap runs the analysis pipeline. A double-clicked End button,
+  // a retry of a failed closeout, and a concurrent /end all resolve safely.
+  const claimed = await transitionMeeting(id, END_ELIGIBLE_STATUSES, "processing", {
+    endedAt: meeting.endedAt ?? new Date(),
+  });
+  if (!claimed) {
+    if (meeting.status === "complete" || meeting.minutesMarkdown) {
+      // Already finished — return the existing minutes instead of re-running.
+      return NextResponse.json({ minutes: { minutesMarkdown: meeting.minutesMarkdown, qaNotes: meeting.qaNotes } });
+    }
+    return NextResponse.json(
+      { error: "Meeting closeout is already running." },
+      { status: 409 },
+    );
+  }
+
+  // Close the transcription stream BEFORE analysis so no straggler finals race
+  // the pipeline (persistFinal is also status-guarded as a second line of
+  // defense). Safe no-op when no live session exists on this process.
+  try {
+    await stopLiveMeetingTranscription(id);
+  } catch {
+    // A failed socket teardown must not block closeout.
+  }
 
   try {
     await analyzeMeeting(user, id);
@@ -43,10 +63,9 @@ export async function POST(
     });
     return NextResponse.json({ minutes });
   } catch (err) {
-    await db
-      .update(meetingSessions)
-      .set({ status: "ended", updatedAt: new Date() })
-      .where(eq(meetingSessions.id, id));
+    // Closeout failed (model/API error mid-pipeline). Mark failed — retryable
+    // by calling /end again; analyzeMeeting replaces derived rows on re-run.
+    await transitionMeeting(id, ["processing"], "failed");
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Meeting closeout failed" },
       { status: 400 },

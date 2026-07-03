@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   text,
@@ -6,6 +7,7 @@ import {
   jsonb,
   boolean,
   index,
+  uniqueIndex,
   vector,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
@@ -13,7 +15,28 @@ import {
 export type Role = "ADMIN" | "MEMBER";
 export type InvoiceStatus = "APPROVED" | "NEEDS_REVIEW" | "DENIED" | "PENDING";
 export type CompanyRole = "OWNER" | "ADMIN" | "MEMBER";
-export type MeetingStatus = "detected" | "active" | "ended" | "processing" | "complete";
+/**
+ * Meeting lifecycle. All writes go through `transitionMeeting` in
+ * lib/meetings/state.ts (compare-and-swap) — never set `status` directly.
+ * - detected:   auto-start row created, no audio yet
+ * - active:     recording; live transcription session open
+ * - degraded:   transcription lost after retries — recoverable back to active
+ * - processing: closeout analysis running
+ * - complete:   minutes exist (terminal)
+ * - failed:     closeout failed (retryable via /end)
+ * - abandoned:  swept by the janitor (terminal)
+ * - ended:      legacy value from pre-state-machine failure paths; read-only
+ *               alias of failed (retryable), never written anymore
+ */
+export type MeetingStatus =
+  | "detected"
+  | "active"
+  | "degraded"
+  | "processing"
+  | "complete"
+  | "failed"
+  | "abandoned"
+  | "ended";
 export type MeetingSource = "manual" | "desktop" | "browser" | "calendar" | "import";
 export type MeetingEventType =
   | "project_update"
@@ -193,7 +216,14 @@ export const meetingSessions = pgTable("meeting_sessions", {
   endedAt: timestamp("ended_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => ({
+  // At most ONE live desktop meeting per owner — makes the auto-start
+  // check-then-insert race impossible at the database layer. The auto-start
+  // route inserts with ON CONFLICT DO NOTHING and re-selects on conflict.
+  oneLiveDesktopMeetingPerOwner: uniqueIndex("one_live_desktop_meeting_per_owner")
+    .on(t.ownerId)
+    .where(sql`${t.source} = 'desktop' AND ${t.status} IN ('detected', 'active', 'degraded')`),
+}));
 export type MeetingSession = typeof meetingSessions.$inferSelect;
 
 export const meetingParticipants = pgTable("meeting_participants", {
