@@ -56,12 +56,17 @@ export function NotificationBell() {
     // also fires for clicks inside the panel (stopPropagation can't block it —
     // React delegates events on the document itself), which closed the panel
     // on actions like "Mark all read".
-    const close = (e: MouseEvent) => {
+    const close = (e: Event) => {
       if (rootRef.current?.contains(e.target as Node)) return;
       setOpen(false);
     };
+    // focusin covers keyboard users: tabbing/activating outside closes too.
     document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    document.addEventListener("focusin", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("focusin", close);
+    };
   }, [open]);
 
   async function onClickItem(n: Notif) {

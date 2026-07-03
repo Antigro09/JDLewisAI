@@ -45,12 +45,17 @@ export function SidebarConversations() {
     // also fires for the "⋯" toggle and menu items (stopPropagation can't
     // block it — React delegates events on the document itself), which
     // clobbered the toggle so switching between row menus took two clicks.
-    const close = (e: MouseEvent) => {
+    const close = (e: Event) => {
       if ((e.target as Element | null)?.closest?.("[data-conv-menu]")) return;
       setMenuId(null);
     };
+    // focusin covers keyboard users: tabbing/activating outside closes too.
     document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    document.addEventListener("focusin", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("focusin", close);
+    };
   }, [menuId]);
 
   if (!loaded) return null;

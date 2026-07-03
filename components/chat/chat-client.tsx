@@ -539,13 +539,18 @@ export function ChatClient({
     // also fires for clicks inside the popover (stopPropagation can't block
     // it — React delegates events on the document itself), which closed the
     // menu before submenus like Mode could open.
-    const close = (e: MouseEvent) => {
+    const close = (e: Event) => {
       if (plusMenuRef.current?.contains(e.target as Node)) return;
       setMenuOpen(false);
       setMenuSection(null);
     };
+    // focusin covers keyboard users: tabbing/activating outside closes too.
     document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    document.addEventListener("focusin", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("focusin", close);
+    };
   }, [menuOpen]);
 
   // Stop any in-flight speech / recognition / mic on unmount.
@@ -1050,6 +1055,7 @@ export function ChatClient({
           newText: text,
           model,
           effort,
+          mode,
         }),
       });
       await consumeResponse(res);
