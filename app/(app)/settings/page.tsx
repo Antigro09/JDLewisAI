@@ -68,7 +68,7 @@ export default async function SettingsPage({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <Label htmlFor="defaultModel">Default model</Label>
                   <Select

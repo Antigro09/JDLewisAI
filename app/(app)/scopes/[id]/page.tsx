@@ -42,7 +42,7 @@ export default async function ScopeDetailPage({
       title={scope.title}
       description="Review, download, or copy into your bid documents."
       action={
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <DownloadButton content={md} filename={filename} label="Download .md" />
           <Link href={`/print/scope/${scope.id}`}>
             <Button variant="secondary" size="sm">

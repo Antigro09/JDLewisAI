@@ -60,7 +60,7 @@ export function EapClient({ template }: { template: DocumentTemplate | null }) {
                 placeholder="Site contacts, nearest hospital, known hazards, alarm type, assembly point, anything specific to this site…"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label htmlFor="model">Model</Label>
                 <Select id="model" name="model" defaultValue="claude-opus-4-8" className="h-10 w-full">
@@ -92,10 +92,10 @@ export function EapClient({ template }: { template: DocumentTemplate | null }) {
         </Card>
 
         <Card className="p-5">
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-semibold dark:text-neutral-100">Emergency Action Plan</h3>
             {state.markdown && (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button variant="secondary" size="sm" onClick={() => setBranded(true)}>
                   View branded
                 </Button>

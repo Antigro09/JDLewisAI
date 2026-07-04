@@ -29,6 +29,7 @@ import {
   ChevronRight,
   PanelLeftClose,
   PanelLeft,
+  Menu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOutAction } from "@/app/(auth)/actions";
@@ -70,6 +71,7 @@ export function Sidebar({
   const pathname = usePathname();
   const appName = process.env.NEXT_PUBLIC_APP_NAME || "ContractorAI";
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(() =>
     MORE_NAV.some((i) => pathname.startsWith(i.href)),
   );
@@ -78,6 +80,10 @@ export function Sidebar({
     const stored = window.localStorage.getItem(COLLAPSE_KEY);
     if (stored === "1") setCollapsed(true);
   }, []);
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   function toggleCollapsed() {
     setCollapsed((prev) => {
@@ -92,142 +98,172 @@ export function Sidebar({
 
   const isChat = pathname.startsWith("/chat");
   const initial = user.name.trim().charAt(0).toUpperCase() || "?";
+  const showLabels = !collapsed || mobileOpen; // drawer is always expanded
 
   return (
-    <aside
-      className={cn(
-        "flex h-screen shrink-0 flex-col border-r border-neutral-200 bg-white transition-[width] dark:border-neutral-800 dark:bg-neutral-900",
-        collapsed ? "w-16" : "w-64",
-      )}
-    >
-      <div
-        className={cn(
-          "py-4",
-          collapsed
-            ? "flex flex-col items-center gap-2 px-2"
-            : "flex items-center gap-2 px-4",
-        )}
-      >
+    <>
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-neutral-200 bg-white px-4 pt-[env(safe-area-inset-top)] dark:border-neutral-800 dark:bg-neutral-900 lg:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileOpen(true)}
+          aria-label="Open menu"
+          className="rounded-lg p-1.5 text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+        >
+          <Menu size={20} />
+        </button>
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 font-bold text-white">
           C
         </div>
-        {!collapsed && (
-          <span className="flex-1 truncate font-semibold text-neutral-900 dark:text-neutral-100">
-            {appName}
-          </span>
+        <span className="flex-1 truncate font-semibold text-neutral-900 dark:text-neutral-100">
+          {appName}
+        </span>
+        <NotificationBell />
+      </header>
+
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-40 flex h-dvh w-64 shrink-0 -translate-x-full flex-col border-r border-neutral-200 bg-white transition-transform dark:border-neutral-800 dark:bg-neutral-900",
+          "lg:static lg:z-auto lg:translate-x-0 lg:transition-[width]",
+          mobileOpen && "translate-x-0",
+          collapsed ? "lg:w-16" : "lg:w-64",
         )}
-        {!collapsed && <NotificationBell />}
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+      >
+        <div
+          className={cn(
+            "py-4",
+            showLabels
+              ? "flex items-center gap-2 px-4"
+              : "flex flex-col items-center gap-2 px-2",
+          )}
         >
-          {collapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
-        </button>
-      </div>
-
-      <nav className="space-y-1 px-2">
-        {PRIMARY_NAV.map(({ href, label, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            title={collapsed ? label : undefined}
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-              isActive(href)
-                ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
-                : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
-            )}
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 font-bold text-white">
+            C
+          </div>
+          {showLabels && (
+            <span className="flex-1 truncate font-semibold text-neutral-900 dark:text-neutral-100">
+              {appName}
+            </span>
+          )}
+          {showLabels && <NotificationBell />}
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="hidden rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 lg:block"
           >
-            <Icon size={18} />
-            {!collapsed && label}
-          </Link>
-        ))}
+            {collapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+          </button>
+        </div>
 
-        {!collapsed && (
-          <div>
-            <button
-              type="button"
-              onClick={() => setMoreOpen((o) => !o)}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+        <nav className="space-y-1 px-2">
+          {PRIMARY_NAV.map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              title={showLabels ? undefined : label}
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                isActive(href)
+                  ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+                  : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
+              )}
             >
-              {moreOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-              More
-            </button>
-            {moreOpen && (
-              <div className="max-h-64 space-y-0.5 overflow-y-auto pl-2">
-                {MORE_NAV.map(({ href, label, icon: Icon }) => (
-                  <Link
-                    key={href}
-                    href={href}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm transition-colors",
-                      isActive(href)
-                        ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
-                        : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
-                    )}
-                  >
-                    <Icon size={16} />
-                    {label}
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+              <Icon size={18} />
+              {showLabels && label}
+            </Link>
+          ))}
 
-        {user.role === "ADMIN" && (
-          <Link
-            href="/admin"
-            title={collapsed ? "Admin" : undefined}
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-              isActive("/admin")
-                ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
-                : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
-            )}
-          >
-            <Users size={18} />
-            {!collapsed && "Admin"}
-          </Link>
-        )}
-      </nav>
-
-      {!collapsed && isChat && <SidebarConversations />}
-      {(collapsed || !isChat) && <div className="flex-1" />}
-
-      <div className="border-t border-neutral-200 p-3 dark:border-neutral-800">
-        <Link
-          href="/settings"
-          className="mb-2 flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-        >
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-xs font-semibold text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200">
-            {initial}
-          </div>
-          {!collapsed && (
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium text-neutral-800 dark:text-neutral-100">
-                {user.name}
-              </div>
-              <div className="truncate text-xs text-neutral-500 dark:text-neutral-400">
-                {user.role === "ADMIN" ? "Admin" : "Member"}
-              </div>
+          {showLabels && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setMoreOpen((o) => !o)}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+              >
+                {moreOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                More
+              </button>
+              {moreOpen && (
+                <div className="max-h-64 space-y-0.5 overflow-y-auto pl-2">
+                  {MORE_NAV.map(({ href, label, icon: Icon }) => (
+                    <Link
+                      key={href}
+                      href={href}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm transition-colors",
+                        isActive(href)
+                          ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+                          : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
+                      )}
+                    >
+                      <Icon size={16} />
+                      {label}
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
           )}
-          <Settings size={16} className="shrink-0 text-neutral-400" />
-        </Link>
-        <form action={signOutAction}>
-          <button
-            type="submit"
-            title={collapsed ? "Sign out" : undefined}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+
+          {user.role === "ADMIN" && (
+            <Link
+              href="/admin"
+              title={showLabels ? undefined : "Admin"}
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                isActive("/admin")
+                  ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+                  : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
+              )}
+            >
+              <Users size={18} />
+              {showLabels && "Admin"}
+            </Link>
+          )}
+        </nav>
+
+        {showLabels && isChat && <SidebarConversations />}
+        {(!showLabels || !isChat) && <div className="flex-1" />}
+
+        <div className="border-t border-neutral-200 p-3 dark:border-neutral-800">
+          <Link
+            href="/settings"
+            className="mb-2 flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800"
           >
-            <LogOut size={16} />
-            {!collapsed && "Sign out"}
-          </button>
-        </form>
-      </div>
-    </aside>
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-xs font-semibold text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200">
+              {initial}
+            </div>
+            {showLabels && (
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                  {user.name}
+                </div>
+                <div className="truncate text-xs text-neutral-500 dark:text-neutral-400">
+                  {user.role === "ADMIN" ? "Admin" : "Member"}
+                </div>
+              </div>
+            )}
+            <Settings size={16} className="shrink-0 text-neutral-400" />
+          </Link>
+          <form action={signOutAction}>
+            <button
+              type="submit"
+              title={showLabels ? undefined : "Sign out"}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            >
+              <LogOut size={16} />
+              {showLabels && "Sign out"}
+            </button>
+          </form>
+        </div>
+      </aside>
+    </>
   );
 }

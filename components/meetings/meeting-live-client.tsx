@@ -562,11 +562,11 @@ export function MeetingLiveClient({
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-sm text-neutral-500 dark:text-neutral-400">
+        <div className="min-w-0">
+          <div className="truncate text-sm text-neutral-500 dark:text-neutral-400">
             {bundle.project?.name ?? "No project assigned"}
           </div>
-          <h1 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
+          <h1 className="break-words text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
             {bundle.meeting.title}
           </h1>
         </div>
@@ -616,7 +616,7 @@ export function MeetingLiveClient({
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card className="p-4">
           <div className="text-xs uppercase text-neutral-400">Stage</div>
           <div className="mt-1 font-medium text-neutral-900 dark:text-neutral-100">
@@ -706,10 +706,12 @@ export function MeetingLiveClient({
               {bundle.segments.map((s) => (
                 <div key={s.id} className="rounded-lg bg-neutral-50 p-3 dark:bg-neutral-800">
                   <div className="mb-1 flex items-center justify-between gap-2 text-xs">
-                    <span className="font-medium text-brand-700 dark:text-brand-300">
+                    <span className="min-w-0 truncate font-medium text-brand-700 dark:text-brand-300">
                       {s.speakerName || s.speakerLabel}
                     </span>
-                    <span className={confidenceClass(s.confidence)}>{s.confidence}%</span>
+                    <span className={cn("shrink-0", confidenceClass(s.confidence))}>
+                      {s.confidence}%
+                    </span>
                   </div>
                   <p className="whitespace-pre-wrap text-sm text-neutral-800 dark:text-neutral-100">
                     {s.text}

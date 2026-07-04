@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ContractorAI</string>
+    <string name="title_activity_main">ContractorAI</string>
+    <string name="package_name">com.contractorai.mobile</string>
+    <string name="custom_url_scheme">com.contractorai.mobile</string>
+</resources>

@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth/server";
 import { applyPendingDecisions } from "@/lib/claude/agent";
 import type { Attachment } from "@/lib/claude/types";
 import { resolveModel } from "@/lib/claude/models";
+import { getMode } from "@/lib/claude/modes";
 import { isGoogleConnected } from "@/lib/google/client";
 import { effectivePlugins } from "@/lib/plugins";
 import { buildChatSystem } from "@/lib/data";
@@ -28,6 +29,7 @@ type Body = {
   attachments?: Attachment[];
   model?: string;
   effort?: string;
+  mode?: string;
 };
 
 export async function POST(req: Request) {
@@ -123,6 +125,8 @@ export async function POST(req: Request) {
     { projectId: conv.projectId, skillIds: conv.skillIds },
     googleEnabled,
   );
+  const mode = getMode(body.mode);
+  if (mode?.note) system = `${system}\n\n${mode.note}`;
   if (webSearch) system = `${system}\n\n${WEB_TOOLS_NOTE}`;
   if (mcp.servers.length)
     system = `${system}\n\n${MCP_TOOLS_NOTE}\nConnected apps: ${mcp.servers.map((s) => s.name).join(", ")}.`;

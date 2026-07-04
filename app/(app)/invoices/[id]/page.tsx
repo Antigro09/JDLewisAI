@@ -47,7 +47,7 @@ export default async function InvoiceDetailPage({
       title={ex.vendor || inv.fileName}
       description={ex.invoiceNumber ? `Invoice #${ex.invoiceNumber}` : inv.fileName}
       action={
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <StatusBadge status={inv.status} size="lg" />
           <Link href="/invoices">
             <Button variant="secondary" size="sm">
@@ -92,7 +92,7 @@ export default async function InvoiceDetailPage({
         <div className="space-y-4">
           <Card className="p-5">
             <h3 className="mb-3 font-semibold">Extracted details</h3>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Vendor" value={ex.vendor} />
               <Field label="Invoice #" value={ex.invoiceNumber} />
               <Field label="Invoice date" value={ex.invoiceDate} />
@@ -110,18 +110,18 @@ export default async function InvoiceDetailPage({
                   <thead>
                     <tr className="text-left text-xs uppercase text-neutral-400">
                       <th className="border-b py-1 pr-2 dark:border-neutral-800">Description</th>
-                      <th className="border-b py-1 pr-2 dark:border-neutral-800">Qty</th>
-                      <th className="border-b py-1 pr-2 dark:border-neutral-800">Unit</th>
-                      <th className="border-b py-1 dark:border-neutral-800">Amount</th>
+                      <th className="whitespace-nowrap border-b py-1 pr-2 dark:border-neutral-800">Qty</th>
+                      <th className="whitespace-nowrap border-b py-1 pr-2 dark:border-neutral-800">Unit</th>
+                      <th className="whitespace-nowrap border-b py-1 dark:border-neutral-800">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
                     {ex.lineItems.map((li, i) => (
                       <tr key={i} className="text-neutral-700 dark:text-neutral-300">
                         <td className="border-b py-1 pr-2 dark:border-neutral-800">{li.description}</td>
-                        <td className="border-b py-1 pr-2 dark:border-neutral-800">{li.quantity ?? ""}</td>
-                        <td className="border-b py-1 pr-2 dark:border-neutral-800">{li.unitPrice ?? ""}</td>
-                        <td className="border-b py-1 dark:border-neutral-800">{li.amount ?? ""}</td>
+                        <td className="whitespace-nowrap border-b py-1 pr-2 dark:border-neutral-800">{li.quantity ?? ""}</td>
+                        <td className="whitespace-nowrap border-b py-1 pr-2 dark:border-neutral-800">{li.unitPrice ?? ""}</td>
+                        <td className="whitespace-nowrap border-b py-1 dark:border-neutral-800">{li.amount ?? ""}</td>
                       </tr>
                     ))}
                   </tbody>
