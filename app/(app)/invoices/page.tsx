@@ -32,7 +32,7 @@ export default async function InvoicesPage() {
       <Card className="mb-6 p-5">
         <h2 className="mb-3 font-medium">Upload an invoice</h2>
         <form action={uploadInvoiceAction} className="flex flex-wrap items-end gap-3">
-          <div className="grow">
+          <div className="w-full sm:w-auto sm:grow">
             <Label>Invoice file (image or PDF)</Label>
             <input
               type="file"
@@ -42,9 +42,9 @@ export default async function InvoicesPage() {
               className="block w-full text-sm text-neutral-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
             />
           </div>
-          <div>
+          <div className="w-full sm:w-auto">
             <Label htmlFor="projectId">Project</Label>
-            <Select id="projectId" name="projectId" className="h-10">
+            <Select id="projectId" name="projectId" className="h-10 w-full sm:w-auto">
               <option value="">None</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -53,7 +53,9 @@ export default async function InvoicesPage() {
               ))}
             </Select>
           </div>
-          <SubmitButton pendingText="Reading…">Extract & review</SubmitButton>
+          <SubmitButton pendingText="Reading…" className="w-full sm:w-auto">
+            Extract & review
+          </SubmitButton>
         </form>
       </Card>
 
@@ -69,7 +71,7 @@ export default async function InvoicesPage() {
           };
           return (
             <Link key={inv.id} href={`/invoices/${inv.id}`}>
-              <Card className="flex items-center justify-between p-4 transition-colors hover:border-brand-300">
+              <Card className="flex items-center justify-between gap-3 p-4 transition-colors hover:border-brand-300">
                 <div className="min-w-0">
                   <div className="truncate font-medium">
                     {ex.vendor || inv.fileName}
@@ -80,7 +82,9 @@ export default async function InvoicesPage() {
                     {formatDate(inv.createdAt)}
                   </div>
                 </div>
-                <StatusBadge status={inv.status} />
+                <span className="shrink-0">
+                  <StatusBadge status={inv.status} />
+                </span>
               </Card>
             </Link>
           );

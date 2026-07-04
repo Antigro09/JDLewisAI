@@ -64,18 +64,18 @@ export function InvoiceRollupClient() {
                     <thead>
                       <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-400 dark:border-neutral-800">
                         <th className="py-1 pr-2">Product</th>
-                        <th className="py-1 pr-2">Total Qty</th>
-                        <th className="py-1 pr-2">Unit</th>
-                        <th className="py-1">Invoices</th>
+                        <th className="whitespace-nowrap py-1 pr-2">Total Qty</th>
+                        <th className="whitespace-nowrap py-1 pr-2">Unit</th>
+                        <th className="whitespace-nowrap py-1">Invoices</th>
                       </tr>
                     </thead>
                     <tbody>
                       {state.rows.map((r, i) => (
                         <tr key={i} className="border-b border-neutral-100 dark:border-neutral-800">
                           <td className="py-1 pr-2 dark:text-neutral-200">{r.product}</td>
-                          <td className="py-1 pr-2 dark:text-neutral-200">{r.totalQuantity}</td>
-                          <td className="py-1 pr-2 text-neutral-500 dark:text-neutral-400">{r.unit ?? "—"}</td>
-                          <td className="py-1 text-neutral-500 dark:text-neutral-400">{r.sourceCount}</td>
+                          <td className="whitespace-nowrap py-1 pr-2 dark:text-neutral-200">{r.totalQuantity}</td>
+                          <td className="whitespace-nowrap py-1 pr-2 text-neutral-500 dark:text-neutral-400">{r.unit ?? "—"}</td>
+                          <td className="whitespace-nowrap py-1 text-neutral-500 dark:text-neutral-400">{r.sourceCount}</td>
                         </tr>
                       ))}
                     </tbody>

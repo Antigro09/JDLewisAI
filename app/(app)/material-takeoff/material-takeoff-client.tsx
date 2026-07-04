@@ -52,14 +52,14 @@ function MaterialRows({ line }: { line: MaterialLine }) {
           )}
         </div>
       </td>
-      <td className="py-1.5 pr-2 text-right font-medium tabular-nums dark:text-neutral-200">
+      <td className="whitespace-nowrap py-1.5 pr-2 text-right font-medium tabular-nums dark:text-neutral-200">
         {line.quantityPurchase.toLocaleString()}
       </td>
-      <td className="py-1.5 pr-2 text-neutral-500 dark:text-neutral-400">{line.unit}</td>
-      <td className="py-1.5 pr-2 text-right tabular-nums text-neutral-500 dark:text-neutral-400">
+      <td className="whitespace-nowrap py-1.5 pr-2 text-neutral-500 dark:text-neutral-400">{line.unit}</td>
+      <td className="whitespace-nowrap py-1.5 pr-2 text-right tabular-nums text-neutral-500 dark:text-neutral-400">
         {line.quantityExact.toLocaleString()}
       </td>
-      <td className="py-1.5 text-right tabular-nums text-neutral-500 dark:text-neutral-400">
+      <td className="whitespace-nowrap py-1.5 text-right tabular-nums text-neutral-500 dark:text-neutral-400">
         {line.wastePct}%
       </td>
     </tr>
@@ -123,7 +123,7 @@ export function MaterialTakeoffClient({
             </div>
 
             <label
-              className={`flex items-center gap-2 text-sm ${
+              className={`flex flex-wrap items-center gap-2 text-sm ${
                 googleConnected
                   ? "text-neutral-700 dark:text-neutral-300"
                   : "text-neutral-400"
@@ -185,26 +185,26 @@ export function MaterialTakeoffClient({
                       <thead>
                         <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-400 dark:border-neutral-800">
                           <th className="py-1 pr-2">File</th>
-                          <th className="py-1 pr-2">Page</th>
+                          <th className="whitespace-nowrap py-1 pr-2">Page</th>
                           <th className="py-1 pr-2">Sheet</th>
-                          <th className="py-1 pr-2">Scale</th>
-                          <th className="py-1 text-right">Measurements</th>
+                          <th className="whitespace-nowrap py-1 pr-2">Scale</th>
+                          <th className="whitespace-nowrap py-1 text-right">Measurements</th>
                         </tr>
                       </thead>
                       <tbody>
                         {report.sheets.map((s, i) => (
                           <tr key={i} className="border-b border-neutral-100 dark:border-neutral-800">
                             <td className="py-1 pr-2 dark:text-neutral-200">{s.fileName}</td>
-                            <td className="py-1 pr-2 text-neutral-500 dark:text-neutral-400">
+                            <td className="whitespace-nowrap py-1 pr-2 text-neutral-500 dark:text-neutral-400">
                               {s.pageNumber}
                             </td>
                             <td className="py-1 pr-2 text-neutral-500 dark:text-neutral-400">
                               {[s.sheetId, s.sheetTitle].filter(Boolean).join(" — ") || "—"}
                             </td>
-                            <td className="py-1 pr-2 text-neutral-500 dark:text-neutral-400">
+                            <td className="whitespace-nowrap py-1 pr-2 text-neutral-500 dark:text-neutral-400">
                               {s.scale}
                             </td>
-                            <td className="py-1 text-right tabular-nums text-neutral-500 dark:text-neutral-400">
+                            <td className="whitespace-nowrap py-1 text-right tabular-nums text-neutral-500 dark:text-neutral-400">
                               {s.measurementCount}
                             </td>
                           </tr>
@@ -239,10 +239,10 @@ export function MaterialTakeoffClient({
                               <thead>
                                 <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-400 dark:border-neutral-800">
                                   <th className="py-1 pr-2">Material</th>
-                                  <th className="py-1 pr-2 text-right">Buy Qty</th>
-                                  <th className="py-1 pr-2">Unit</th>
-                                  <th className="py-1 pr-2 text-right">Exact</th>
-                                  <th className="py-1 text-right">Waste</th>
+                                  <th className="whitespace-nowrap py-1 pr-2 text-right">Buy Qty</th>
+                                  <th className="whitespace-nowrap py-1 pr-2">Unit</th>
+                                  <th className="whitespace-nowrap py-1 pr-2 text-right">Exact</th>
+                                  <th className="whitespace-nowrap py-1 text-right">Waste</th>
                                 </tr>
                               </thead>
                               <tbody>

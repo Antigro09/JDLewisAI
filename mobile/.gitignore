@@ -1,0 +1,15 @@
+# Node
+node_modules/
+
+# Android build outputs (native project itself IS committed)
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+
+# iOS build outputs (native project itself IS committed)
+ios/App/Pods/
+ios/App/App.xcworkspace/xcuserdata/
+
+# NOTE: www/ is intentionally NOT ignored — `cap sync` requires webDir to exist
+# even in server.url mode, so the placeholder page is committed.

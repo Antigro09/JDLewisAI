@@ -34,26 +34,28 @@ export default async function BidDetailPage({
       }
     >
       <div className="space-y-6">
-        <Card className="overflow-x-auto p-5">
+        <Card className="p-5">
           <h3 className="mb-3 font-semibold">Vendor Quotes</h3>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-400 dark:border-neutral-800">
-                <th className="pb-2 pr-4">Vendor</th>
-                <th className="pb-2 pr-4">Total Amount</th>
-                <th className="pb-2">Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vendors.map((v, i) => (
-                <tr key={i} className="border-b border-neutral-100 dark:border-neutral-800">
-                  <td className="py-2 pr-4 font-medium dark:text-neutral-100">{v.name}</td>
-                  <td className="py-2 pr-4 dark:text-neutral-200">${v.totalAmt}</td>
-                  <td className="py-2 text-neutral-500 dark:text-neutral-400">{v.notes ?? "—"}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-400 dark:border-neutral-800">
+                  <th className="whitespace-nowrap pb-2 pr-4">Vendor</th>
+                  <th className="whitespace-nowrap pb-2 pr-4">Total Amount</th>
+                  <th className="pb-2">Notes</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {vendors.map((v, i) => (
+                  <tr key={i} className="border-b border-neutral-100 dark:border-neutral-800">
+                    <td className="whitespace-nowrap py-2 pr-4 font-medium dark:text-neutral-100">{v.name}</td>
+                    <td className="whitespace-nowrap py-2 pr-4 dark:text-neutral-200">${v.totalAmt}</td>
+                    <td className="py-2 text-neutral-500 dark:text-neutral-400">{v.notes ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
 
         {bid.recommendation && (
@@ -66,7 +68,7 @@ export default async function BidDetailPage({
         {bid.analysis && (
           <Card className="p-5">
             <h3 className="mb-3 font-semibold">Detailed Analysis</h3>
-            <pre className="whitespace-pre-wrap text-sm text-neutral-700 leading-relaxed font-sans">
+            <pre className="whitespace-pre-wrap break-words text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed font-sans">
               {bid.analysis}
             </pre>
           </Card>

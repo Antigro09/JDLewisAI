@@ -1,4 +1,5 @@
-const { app, BrowserWindow, desktopCapturer, ipcMain, session } = require("electron");
+const { app, BrowserWindow, desktopCapturer, ipcMain, session, shell } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const { execFile } = require("node:child_process");
 const path = require("node:path");
 
@@ -111,6 +112,23 @@ function createWindow() {
     },
   });
   mainWindow.loadURL(APP_URL);
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      if (new URL(url).origin !== new URL(APP_URL).origin) {
+        shell.openExternal(url);
+        return { action: "deny" };
+      }
+    } catch {
+      return { action: "deny" };
+    }
+    return { action: "allow" };
+  });
+  mainWindow.webContents.on("did-fail-load", (_e, code, desc, _url, isMainFrame) => {
+    if (!isMainFrame || code === -3 /* ERR_ABORTED */) return;
+    mainWindow.loadFile(path.join(__dirname, "error.html"), {
+      query: { url: APP_URL, code: String(code), desc },
+    });
+  });
 }
 
 function configureDisplayMediaCapture() {
@@ -139,6 +157,13 @@ function configureDisplayMediaCapture() {
 app.whenReady().then(() => {
   configureDisplayMediaCapture();
   createWindow();
+  if (app.isPackaged) {
+    // Without a listener, electron-updater's async "error" emits (e.g. a
+    // download failing mid-flight) become uncaught exceptions and crash the app.
+    autoUpdater.on("error", () => {});
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {});
+    setInterval(() => autoUpdater.checkForUpdatesAndNotify().catch(() => {}), 4 * 60 * 60 * 1000);
+  }
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

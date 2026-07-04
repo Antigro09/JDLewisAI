@@ -27,7 +27,7 @@ export default async function ChangeOrderDetailPage({
       title={co.title}
       description={co.coNumber ? `Change Order ${co.coNumber}` : `Created ${formatDate(co.createdAt)}`}
       action={
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <StatusBadge status={co.status} size="lg" />
           {co.generatedDraft && (
             <Link href={`/print/change-order/${co.id}`}>
@@ -93,7 +93,7 @@ export default async function ChangeOrderDetailPage({
         {co.generatedDraft && (
           <Card className="p-5">
             <h3 className="mb-3 font-semibold">Generated Draft</h3>
-            <pre className="whitespace-pre-wrap font-mono text-xs text-neutral-700 leading-relaxed">
+            <pre className="whitespace-pre-wrap break-words font-mono text-xs text-neutral-700 dark:text-neutral-300 leading-relaxed">
               {co.generatedDraft}
             </pre>
           </Card>

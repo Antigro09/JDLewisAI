@@ -78,7 +78,7 @@ export default function PlansPage() {
                   placeholder="e.g. How many 20A circuits are on Panel A? What's the ceiling height in the lobby?"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <Label htmlFor="model">Model</Label>
                   <Select id="model" name="model" defaultValue="claude-opus-4-8" className="h-10 w-full">
@@ -143,7 +143,7 @@ export default function PlansPage() {
                   className="block w-full text-sm text-neutral-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100 dark:text-neutral-300"
                 />
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
                   <Label htmlFor="wallThicknessIn">Wall thickness (in)</Label>
                   <Input id="wallThicknessIn" name="wallThicknessIn" type="number" step="0.25" defaultValue="4.5" />
@@ -174,7 +174,7 @@ export default function PlansPage() {
             <h3 className="mb-3 font-semibold dark:text-neutral-100">Takeoff</h3>
             {takeoffState.data ? (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
                     <div className="text-xs uppercase text-neutral-400">Total Doors</div>
                     <div className="text-xl font-bold dark:text-neutral-100">{takeoffState.data.totalDoors}</div>
@@ -205,11 +205,11 @@ export default function PlansPage() {
                         {takeoffState.data.doors.map((d) => (
                           <tr key={d.id} className="border-b border-neutral-100 dark:border-neutral-800">
                             <td className="py-1 pr-2 dark:text-neutral-200">{d.type}</td>
-                            <td className="py-1 pr-2 text-neutral-500 dark:text-neutral-400">
+                            <td className="whitespace-nowrap py-1 pr-2 text-neutral-500 dark:text-neutral-400">
                               {d.widthIn && d.heightIn ? `${d.widthIn}" × ${d.heightIn}"` : "—"}
                             </td>
-                            <td className="py-1 pr-2 text-neutral-500 dark:text-neutral-400">{d.swing ?? "—"}</td>
-                            <td className="py-1 pr-2 dark:text-neutral-200">{d.count}</td>
+                            <td className="whitespace-nowrap py-1 pr-2 text-neutral-500 dark:text-neutral-400">{d.swing ?? "—"}</td>
+                            <td className="whitespace-nowrap py-1 pr-2 dark:text-neutral-200">{d.count}</td>
                             <td className="py-1 text-neutral-500 dark:text-neutral-400">{d.location ?? "—"}</td>
                           </tr>
                         ))}

@@ -305,7 +305,15 @@ function ModelPicker({
       {open && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="absolute bottom-full right-0 z-20 mb-1 w-72 rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-800"
+          className={cn(
+            // The trigger sits left of the mic/voice/send buttons, so neither
+            // left-0 nor right-0 keeps a 288px panel on a 360px screen — anchor
+            // to the viewport on mobile, to the trigger from sm: up.
+            "fixed inset-x-4 bottom-24 z-20 max-w-[calc(100vw-2rem)] rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-800 sm:absolute sm:inset-x-auto sm:bottom-full sm:right-0 sm:mb-1 sm:w-72",
+            // Scrolling would clip the effort / more-models flyouts (they hang
+            // outside this panel), so only cap and scroll when no flyout is open.
+            sub === null && "max-h-[60vh] overflow-y-auto",
+          )}
         >
           {primary.map(modelRow)}
 
@@ -358,7 +366,7 @@ function ModelPicker({
 
           {/* Effort flyout */}
           {sub === "effort" && hasEfforts && (
-            <div className="absolute right-full top-0 mr-2 w-72 rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-800">
+            <div className="absolute bottom-full right-0 mb-2 max-h-[60vh] w-72 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-800 sm:bottom-auto sm:right-full sm:top-0 sm:mb-0 sm:mr-2">
               <p className="px-3 pb-2 pt-1 text-xs text-neutral-500 dark:text-neutral-400">
                 Higher effort means more thorough responses, but takes longer and uses your
                 limits faster.
@@ -408,7 +416,7 @@ function ModelPicker({
 
           {/* More models flyout */}
           {sub === "more" && (
-            <div className="absolute right-full top-0 mr-2 w-52 rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-800">
+            <div className="absolute bottom-full right-0 mb-2 max-h-[60vh] w-52 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-800 sm:bottom-auto sm:right-full sm:top-0 sm:mb-0 sm:mr-2">
               {more.length === 0 ? (
                 <div className="px-3 py-2 text-sm text-neutral-400">No additional models.</div>
               ) : (
@@ -1472,7 +1480,7 @@ export function ChatClient({
             </div>
             ) : (
             /* Controls row */
-            <div className="mt-1 flex items-center justify-between">
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-y-1">
               {/* Left: "+" menu */}
               <div className="flex min-w-0 items-center gap-1.5">
               <div className="relative" ref={plusMenuRef}>
@@ -1494,7 +1502,7 @@ export function ChatClient({
                 </button>
 
                 {menuOpen && (
-                  <div className="absolute bottom-full left-0 z-20 mb-2 w-72 rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-800">
+                  <div className="absolute bottom-full left-0 z-20 mb-2 max-h-[60vh] w-72 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl dark:border-neutral-700 dark:bg-neutral-800">
                     <button
                       type="button"
                       className={menuRowCls}

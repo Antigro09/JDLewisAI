@@ -117,15 +117,18 @@ export default async function ProjectDetailPage({
             {files.map((f) => (
               <div
                 key={f.id}
-                className="flex items-center justify-between rounded-lg border border-neutral-200 px-3 py-2"
+                className="flex items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2"
               >
                 <div className="min-w-0">
                   <div className="truncate text-sm font-medium">{f.name}</div>
-                  <div className="text-xs text-neutral-400">
+                  <div className="truncate text-xs text-neutral-400">
                     {f.mime} · {fmtSize(f.sizeBytes)}
                   </div>
                 </div>
-                <form action={deleteProjectFile.bind(null, project.id, f.id)}>
+                <form
+                  action={deleteProjectFile.bind(null, project.id, f.id)}
+                  className="shrink-0"
+                >
                   <Button type="submit" variant="ghost" size="sm">
                     Remove
                   </Button>

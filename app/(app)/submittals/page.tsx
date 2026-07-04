@@ -72,12 +72,12 @@ export default async function SubmittalsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-400 dark:border-neutral-800">
-                <th className="pb-2 pr-4">Title</th>
-                <th className="pb-2 pr-4">Spec</th>
-                <th className="pb-2 pr-4">Ball in Court</th>
-                <th className="pb-2 pr-4">Due</th>
-                <th className="pb-2 pr-4">Status</th>
-                <th className="pb-2">Created</th>
+                <th className="whitespace-nowrap pb-2 pr-4">Title</th>
+                <th className="whitespace-nowrap pb-2 pr-4">Spec</th>
+                <th className="whitespace-nowrap pb-2 pr-4">Ball in Court</th>
+                <th className="whitespace-nowrap pb-2 pr-4">Due</th>
+                <th className="whitespace-nowrap pb-2 pr-4">Status</th>
+                <th className="whitespace-nowrap pb-2">Created</th>
               </tr>
             </thead>
             <tbody>
@@ -88,11 +88,11 @@ export default async function SubmittalsPage() {
                       {s.title}
                     </Link>
                   </td>
-                  <td className="py-2 pr-4 text-neutral-500 dark:text-neutral-400">{s.specSection ?? "—"}</td>
+                  <td className="whitespace-nowrap py-2 pr-4 text-neutral-500 dark:text-neutral-400">{s.specSection ?? "—"}</td>
                   <td className="py-2 pr-4 text-neutral-600 dark:text-neutral-300">{s.ballInCourt ?? "—"}</td>
-                  <td className="py-2 pr-4 text-neutral-500 dark:text-neutral-400">{s.dueDate ?? "—"}</td>
-                  <td className="py-2 pr-4"><StatusBadge status={s.status} /></td>
-                  <td className="py-2 text-neutral-400">{formatDate(s.createdAt)}</td>
+                  <td className="whitespace-nowrap py-2 pr-4 text-neutral-500 dark:text-neutral-400">{s.dueDate ?? "—"}</td>
+                  <td className="whitespace-nowrap py-2 pr-4"><StatusBadge status={s.status} /></td>
+                  <td className="whitespace-nowrap py-2 text-neutral-400">{formatDate(s.createdAt)}</td>
                 </tr>
               ))}
             </tbody>
