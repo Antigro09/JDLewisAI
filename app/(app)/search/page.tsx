@@ -65,7 +65,9 @@ export default function SearchPage() {
               Searched {filesSearched} text file{filesSearched !== 1 ? "s" : ""} across your projects
             </p>
           )}
-          <Markdown content={answer} />
+          <div className="overflow-x-auto">
+            <Markdown content={answer} />
+          </div>
         </Card>
       )}
 

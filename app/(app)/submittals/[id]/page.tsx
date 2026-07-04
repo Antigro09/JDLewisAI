@@ -27,7 +27,7 @@ export default async function SubmittalDetailPage({
       title={submittal.title}
       description={submittal.specSection ? `Spec ${submittal.specSection}` : `Created ${formatDate(submittal.createdAt)}`}
       action={
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <StatusBadge status={submittal.status} size="lg" />
           <Link href="/submittals">
             <Button variant="secondary" size="sm">All Submittals</Button>

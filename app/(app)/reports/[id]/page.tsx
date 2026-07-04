@@ -26,7 +26,7 @@ export default async function DailyReportDetailPage({
       title={`Daily Report — ${report.reportDate}`}
       description={`Generated ${formatDate(report.createdAt)}`}
       action={
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {report.generatedReport && (
             <Link href={`/print/daily-report/${report.id}`}>
               <Button variant="secondary" size="sm">View branded</Button>
@@ -61,7 +61,7 @@ export default async function DailyReportDetailPage({
         {report.generatedReport && (
           <Card className="p-5">
             <h3 className="mb-3 font-semibold">Generated Report</h3>
-            <pre className="whitespace-pre-wrap font-mono text-xs text-neutral-700 leading-relaxed">
+            <pre className="whitespace-pre-wrap break-words font-mono text-xs text-neutral-700 dark:text-neutral-300 leading-relaxed">
               {report.generatedReport}
             </pre>
           </Card>

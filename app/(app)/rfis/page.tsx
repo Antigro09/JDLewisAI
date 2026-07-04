@@ -81,7 +81,7 @@ export default async function RfisPage() {
         )}
         {rows.map((rfi) => (
           <Link key={rfi.id} href={`/rfis/${rfi.id}`}>
-            <Card className="flex items-center justify-between p-4 transition-colors hover:border-brand-300">
+            <Card className="flex items-center justify-between gap-3 p-4 transition-colors hover:border-brand-300">
               <div className="min-w-0">
                 <div className="truncate font-medium">
                   {rfi.rfiNumber ? `${rfi.rfiNumber} — ` : ""}{rfi.subject}

@@ -64,7 +64,7 @@ export default async function ScopesPage() {
                 placeholder="Optional: scope notes, building type, phasing, special requirements…"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label htmlFor="model">Model</Label>
                 <Select id="model" name="model" className="h-10 w-full">

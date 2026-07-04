@@ -75,7 +75,7 @@ export default async function ChangeOrdersPage() {
         )}
         {rows.map((co) => (
           <Link key={co.id} href={`/changes/${co.id}`}>
-            <Card className="flex items-center justify-between p-4 transition-colors hover:border-brand-300">
+            <Card className="flex items-center justify-between gap-3 p-4 transition-colors hover:border-brand-300">
               <div className="min-w-0">
                 <div className="truncate font-medium">
                   {co.coNumber ? `${co.coNumber} — ` : ""}{co.title}
