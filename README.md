@@ -66,6 +66,18 @@ Set `ALLOWED_SIGNUP_DOMAIN` (e.g. `yourcompany.com`) to restrict self-registrati
 3. Run `npm run db:push` (locally or via a one-off) against the Neon DB, then `npm run db:seed`.
 4. Deploy. The chat route streams on the Node runtime (`maxDuration = 300`).
 
+## Platforms (Web · Mobile · Desktop)
+
+One product, three channels — the native apps are thin shells that load the deployed HTTPS origin
+(the app can't be statically exported, so there's no bundled-frontend option):
+
+- **Web** — Vercel, as above; responsive down to 375px and PWA-installable (no service worker).
+- **Mobile** — Capacitor 7 shells in `mobile/` (iOS + Android, appId `com.contractorai.mobile`).
+- **Desktop** — Electron shell in `electron/`; NSIS Windows installer with electron-updater
+  auto-updates published from GitHub Releases via tag `desktop-v<version>`.
+
+Setup, release procedures, and store checklists: **[docs/platforms.md](docs/platforms.md)**.
+
 ## Google integration (Phase 2)
 
 Each employee connects their own Google account; the AI then searches/reads/creates/edits real
