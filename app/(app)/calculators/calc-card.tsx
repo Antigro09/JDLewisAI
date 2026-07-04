@@ -25,7 +25,7 @@ export function CalcCard({
       <p className="mb-3 mt-0.5 text-xs text-neutral-400">{blurb}</p>
       <form action={action} className="space-y-3">
         <input type="hidden" name="tool" value={tool} />
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {fields.map((f) => (
             <div key={f.name}>
               <Label htmlFor={`${tool}-${f.name}`}>{f.label}</Label>

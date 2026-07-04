@@ -58,7 +58,7 @@ export default async function AutomationsPage() {
                 placeholder="e.g. Find new emails labeled 'bids' since the last run and append the sender, subject, and date as a row to the Google Sheet titled 'Bid Tracker'."
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label htmlFor="intervalMinutes">Runs</Label>
                 <Select
