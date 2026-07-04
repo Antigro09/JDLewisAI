@@ -104,28 +104,30 @@ export default async function AdminPage() {
 
       {/* Usage by feature */}
       {featureRows.length > 0 && (
-        <Card className="overflow-x-auto p-0">
+        <Card className="p-0">
           <div className="border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
             <h2 className="font-semibold text-neutral-900 dark:text-neutral-100">Cost by Feature</h2>
           </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-400 dark:border-neutral-800">
-                <th className="px-4 py-2">Feature</th>
-                <th className="px-4 py-2">Calls</th>
-                <th className="px-4 py-2">Cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {featureRows.map((f) => (
-                <tr key={f.feature} className="border-b border-neutral-100 dark:border-neutral-800">
-                  <td className="px-4 py-2 font-medium dark:text-neutral-100">{f.feature}</td>
-                  <td className="px-4 py-2 text-neutral-500 dark:text-neutral-400">{Number(f.calls).toLocaleString()}</td>
-                  <td className="px-4 py-2 dark:text-neutral-200">${(Number(f.cost) / 100).toFixed(2)}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-400 dark:border-neutral-800">
+                  <th className="whitespace-nowrap px-4 py-2">Feature</th>
+                  <th className="whitespace-nowrap px-4 py-2">Calls</th>
+                  <th className="whitespace-nowrap px-4 py-2">Cost</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {featureRows.map((f) => (
+                  <tr key={f.feature} className="border-b border-neutral-100 dark:border-neutral-800">
+                    <td className="whitespace-nowrap px-4 py-2 font-medium dark:text-neutral-100">{f.feature}</td>
+                    <td className="px-4 py-2 text-neutral-500 dark:text-neutral-400">{Number(f.calls).toLocaleString()}</td>
+                    <td className="whitespace-nowrap px-4 py-2 dark:text-neutral-200">${(Number(f.cost) / 100).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
       )}
 
@@ -199,16 +201,17 @@ export default async function AdminPage() {
         </form>
       </Card>
 
-      <Card className="overflow-x-auto p-0">
+      <Card className="p-0">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-400 dark:border-neutral-800">
-              <th className="px-4 py-3">User</th>
-              <th className="px-4 py-3">Role</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Joined</th>
-              <th className="px-4 py-3">Usage (cost / tokens)</th>
-              <th className="px-4 py-3">Actions</th>
+              <th className="whitespace-nowrap px-4 py-3">User</th>
+              <th className="whitespace-nowrap px-4 py-3">Role</th>
+              <th className="whitespace-nowrap px-4 py-3">Status</th>
+              <th className="whitespace-nowrap px-4 py-3">Joined</th>
+              <th className="whitespace-nowrap px-4 py-3">Usage (cost / tokens)</th>
+              <th className="whitespace-nowrap px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -221,8 +224,8 @@ export default async function AdminPage() {
               return (
                 <tr key={u.id} className="border-b border-neutral-100 align-top dark:border-neutral-800">
                   <td className="px-4 py-3">
-                    <div className="font-medium text-neutral-800 dark:text-neutral-100">{u.name}</div>
-                    <div className="text-xs text-neutral-400">{u.email}</div>
+                    <div className="whitespace-nowrap font-medium text-neutral-800 dark:text-neutral-100">{u.name}</div>
+                    <div className="whitespace-nowrap text-xs text-neutral-400">{u.email}</div>
                   </td>
                   <td className="px-4 py-3 dark:text-neutral-200">{u.role}</td>
                   <td className="px-4 py-3">
@@ -232,10 +235,10 @@ export default async function AdminPage() {
                       <span className="text-green-600 dark:text-green-400">Active</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-neutral-500 dark:text-neutral-400">
+                  <td className="whitespace-nowrap px-4 py-3 text-neutral-500 dark:text-neutral-400">
                     {formatDate(u.createdAt)}
                   </td>
-                  <td className="px-4 py-3 text-neutral-600 dark:text-neutral-300">
+                  <td className="whitespace-nowrap px-4 py-3 text-neutral-600 dark:text-neutral-300">
                     ${cost.toFixed(2)} · {tokens.toLocaleString()} tok
                   </td>
                   <td className="px-4 py-3">
@@ -274,10 +277,11 @@ export default async function AdminPage() {
             })}
           </tbody>
         </table>
+        </div>
       </Card>
 
       {/* Activity log (audit trail) */}
-      <Card className="overflow-x-auto p-0">
+      <Card className="p-0">
         <div className="border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
           <h2 className="font-semibold text-neutral-900 dark:text-neutral-100">Activity log</h2>
           <p className="text-xs text-neutral-500 dark:text-neutral-400">
@@ -287,30 +291,32 @@ export default async function AdminPage() {
         {auditEntries.length === 0 ? (
           <p className="px-4 py-4 text-sm text-neutral-400">No activity recorded yet.</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-400 dark:border-neutral-800">
-                <th className="px-4 py-2">When</th>
-                <th className="px-4 py-2">User</th>
-                <th className="px-4 py-2">Action</th>
-                <th className="px-4 py-2">Detail</th>
-              </tr>
-            </thead>
-            <tbody>
-              {auditEntries.map((a) => (
-                <tr key={a.id} className="border-b border-neutral-100 dark:border-neutral-800">
-                  <td className="whitespace-nowrap px-4 py-2 text-neutral-500 dark:text-neutral-400">
-                    {formatDate(a.createdAt)}
-                  </td>
-                  <td className="px-4 py-2 dark:text-neutral-200">{a.userName ?? "—"}</td>
-                  <td className="px-4 py-2 font-mono text-xs text-neutral-600 dark:text-neutral-300">
-                    {a.action}
-                  </td>
-                  <td className="px-4 py-2 text-neutral-500 dark:text-neutral-400">{a.detail ?? ""}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-400 dark:border-neutral-800">
+                  <th className="whitespace-nowrap px-4 py-2">When</th>
+                  <th className="whitespace-nowrap px-4 py-2">User</th>
+                  <th className="whitespace-nowrap px-4 py-2">Action</th>
+                  <th className="whitespace-nowrap px-4 py-2">Detail</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {auditEntries.map((a) => (
+                  <tr key={a.id} className="border-b border-neutral-100 dark:border-neutral-800">
+                    <td className="whitespace-nowrap px-4 py-2 text-neutral-500 dark:text-neutral-400">
+                      {formatDate(a.createdAt)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-2 dark:text-neutral-200">{a.userName ?? "—"}</td>
+                    <td className="whitespace-nowrap px-4 py-2 font-mono text-xs text-neutral-600 dark:text-neutral-300">
+                      {a.action}
+                    </td>
+                    <td className="px-4 py-2 text-neutral-500 dark:text-neutral-400">{a.detail ?? ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
       </div>

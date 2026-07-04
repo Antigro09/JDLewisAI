@@ -45,7 +45,7 @@ export default async function AutomationDetailPage({
       title={a.name}
       description={active ? "Active — runs on schedule." : "Paused."}
       action={
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <form action={runAutomationNow.bind(null, a.id)}>
             <SubmitButton size="sm" pendingText="Running…">
               Run now
@@ -94,7 +94,7 @@ export default async function AutomationDetailPage({
                 required
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label htmlFor="intervalMinutes">Runs</Label>
                 <Select
