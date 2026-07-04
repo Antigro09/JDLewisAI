@@ -10,7 +10,7 @@ export default async function AppLayout({
 }) {
   const user = await requireUser();
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-dvh flex-col overflow-hidden lg:flex-row">
       <ThemeSync initialTheme={user.personalization?.darkMode} />
       <MeetingAutoStart />
       <Sidebar
