@@ -10,7 +10,7 @@ next-env.d.ts
 
 # production
 /build
-
+/.claude/worktrees
 # misc
 .DS_Store
 *.pem
