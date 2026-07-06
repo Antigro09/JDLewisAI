@@ -1,6 +1,14 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import { anthropic } from "./client";
-import { resolveModel } from "./models";
-import type { Attachment, ChatTurn, StreamEvent } from "./types";
+import { resolveModel, DEFAULT_GENERATE_MODEL } from "./models";
+import { classifyModelError } from "./errors";
+import { joinSystemParts } from "./types";
+import type {
+  Attachment,
+  ChatTurn,
+  StreamEvent,
+  SystemPromptParts,
+} from "./types";
 
 const TEXT_MIME_PREFIXES = ["text/"];
 const TEXT_MIME_EXACT = [
@@ -19,13 +27,36 @@ function isTextual(mime: string): boolean {
   );
 }
 
+/** Image media types the Messages API accepts. Any other image/* (HEIC, BMP,
+ * TIFF, SVG, …) is sent as a text placeholder instead of a real image block —
+ * otherwise the API 400s and, since attachments are replayed from history,
+ * bricks the whole conversation. */
+const SUPPORTED_IMAGE_MIMES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+]);
+
 /** Convert an attachment to one or more Anthropic content blocks. */
-export function attachmentBlocks(a: Attachment): unknown[] {
+export function attachmentBlocks(a: Attachment): Anthropic.ContentBlockParam[] {
   if (a.mime.startsWith("image/")) {
+    if (!SUPPORTED_IMAGE_MIMES.has(a.mime.toLowerCase())) {
+      return [
+        {
+          type: "text",
+          text: `[Attached image "${a.name}" (${a.mime}) — unsupported image format; the model cannot view it. Supported: JPEG, PNG, GIF, WebP.]`,
+        },
+      ];
+    }
     return [
       {
         type: "image",
-        source: { type: "base64", media_type: a.mime, data: a.dataBase64 },
+        source: {
+          type: "base64",
+          media_type: a.mime.toLowerCase() as Anthropic.Base64ImageSource["media_type"],
+          data: a.dataBase64,
+        },
       },
     ];
   }
@@ -59,25 +90,48 @@ export function attachmentBlocks(a: Attachment): unknown[] {
   ];
 }
 
-function toMessages(turns: ChatTurn[]): unknown[] {
+/** Structurally compatible with both TextBlockParam and BetaTextBlockParam. */
+export type SystemBlock = {
+  type: "text";
+  text: string;
+  cache_control?: { type: "ephemeral" };
+};
+
+/** Split system prompt into API blocks: the stable prefix gets the cache
+ * breakpoint; the volatile per-message suffix rides after it uncached. */
+export function buildSystemBlocks(
+  system: string | SystemPromptParts,
+): SystemBlock[] {
+  const stable = typeof system === "string" ? system : system.stable;
+  const volatile = typeof system === "string" ? "" : system.volatile;
+  const blocks: SystemBlock[] = [
+    { type: "text", text: stable, cache_control: { type: "ephemeral" } },
+  ];
+  if (volatile) blocks.push({ type: "text", text: volatile });
+  return blocks;
+}
+
+function toMessages(turns: ChatTurn[]): Anthropic.MessageParam[] {
   return turns.map((t) => {
     if (t.role === "assistant") {
-      return { role: "assistant", content: t.text };
+      return { role: "assistant" as const, content: t.text };
     }
-    const content: unknown[] = [];
+    const content: Anthropic.ContentBlockParam[] = [];
     for (const a of t.attachments ?? []) content.push(...attachmentBlocks(a));
     if (t.text) content.push({ type: "text", text: t.text });
     if (content.length === 0) content.push({ type: "text", text: "" });
-    return { role: "user", content };
+    return { role: "user" as const, content };
   });
 }
 
 export type StreamChatOptions = {
   model: string;
   effort: string;
-  system: string;
+  system: string | SystemPromptParts;
   turns: ChatTurn[];
   maxTokens?: number;
+  /** Abort the request when the client disconnects. */
+  signal?: AbortSignal;
 };
 
 /** Stream a chat completion, yielding incremental events. */
@@ -86,10 +140,10 @@ export async function* streamChat(
 ): AsyncGenerator<StreamEvent> {
   const { model, effort } = resolveModel(opts.model, opts.effort);
 
-  const params: Record<string, unknown> = {
+  const params: Anthropic.MessageStreamParams = {
     model: model.id,
     max_tokens: opts.maxTokens ?? 16000,
-    system: opts.system,
+    system: buildSystemBlocks(opts.system),
     messages: toMessages(opts.turns),
   };
   if (model.adaptiveThinking) {
@@ -100,38 +154,34 @@ export async function* streamChat(
   }
 
   try {
-    // Cast: cutting-edge fields (output_config, adaptive thinking) may not be in
-    // the installed SDK's static types, but are valid at runtime.
-    const stream = (anthropic().messages as unknown as {
-      stream: (p: unknown) => AsyncIterable<unknown> & {
-        finalMessage: () => Promise<unknown>;
-      };
-    }).stream(params);
+    const stream = anthropic().messages.stream(
+      params,
+      opts.signal ? { signal: opts.signal } : undefined,
+    );
 
-    for await (const event of stream as AsyncIterable<Record<string, unknown>>) {
+    for await (const event of stream) {
       if (event.type === "content_block_delta") {
-        const delta = event.delta as Record<string, unknown> | undefined;
-        if (delta?.type === "thinking_delta") {
-          yield { type: "thinking", text: String(delta.thinking ?? "") };
-        } else if (delta?.type === "text_delta") {
-          yield { type: "text", text: String(delta.text ?? "") };
+        if (event.delta.type === "thinking_delta") {
+          yield { type: "thinking", text: event.delta.thinking };
+        } else if (event.delta.type === "text_delta") {
+          yield { type: "text", text: event.delta.text };
         }
       }
     }
 
-    const final = (await stream.finalMessage()) as {
-      usage?: { input_tokens?: number; output_tokens?: number };
-    };
+    const final = await stream.finalMessage();
     yield {
       type: "done",
-      inputTokens: final.usage?.input_tokens ?? 0,
-      outputTokens: final.usage?.output_tokens ?? 0,
+      inputTokens: final.usage.input_tokens,
+      outputTokens: final.usage.output_tokens,
+      cacheCreationInputTokens: final.usage.cache_creation_input_tokens ?? 0,
+      cacheReadInputTokens: final.usage.cache_read_input_tokens ?? 0,
     };
   } catch (err) {
-    yield {
-      type: "error",
-      message: err instanceof Error ? err.message : "Unknown error",
-    };
+    const classified = classifyModelError(err);
+    if (!classified) return; // client aborted — no error event
+    console.error("streamChat failed:", err);
+    yield { type: "error", ...classified };
   }
 }
 
@@ -140,6 +190,8 @@ export type GenerateResult = {
   model: string;
   inputTokens: number;
   outputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
 };
 
 /** Non-streaming, one-shot generation used by construction features. */
@@ -149,40 +201,161 @@ export async function generate(opts: {
   system: string;
   turns: ChatTurn[];
   maxTokens?: number;
+  signal?: AbortSignal;
 }): Promise<GenerateResult> {
   const { model, effort } = resolveModel(
-    opts.model ?? "claude-opus-4-8",
+    opts.model ?? DEFAULT_GENERATE_MODEL,
     opts.effort ?? "high",
   );
 
-  const params: Record<string, unknown> = {
+  const params: Anthropic.MessageCreateParamsNonStreaming = {
     model: model.id,
     max_tokens: opts.maxTokens ?? 8000,
-    system: opts.system,
+    system: buildSystemBlocks(opts.system),
     messages: toMessages(opts.turns),
   };
   if (model.adaptiveThinking) params.thinking = { type: "adaptive" };
   if (effort) params.output_config = { effort };
 
-  const msg = (await (anthropic().messages as unknown as {
-    create: (p: unknown) => Promise<unknown>;
-  }).create(params)) as {
-    content?: { type: string; text?: string }[];
-    usage?: { input_tokens?: number; output_tokens?: number };
-  };
+  const msg = await anthropic().messages.create(
+    params,
+    opts.signal ? { signal: opts.signal } : undefined,
+  );
 
-  const text = (msg.content ?? [])
-    .filter((b) => b.type === "text")
-    .map((b) => b.text ?? "")
+  const text = msg.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
     .join("\n")
     .trim();
 
   return {
     text,
     model: model.id,
-    inputTokens: msg.usage?.input_tokens ?? 0,
-    outputTokens: msg.usage?.output_tokens ?? 0,
+    inputTokens: msg.usage.input_tokens,
+    outputTokens: msg.usage.output_tokens,
+    cacheCreationInputTokens: msg.usage.cache_creation_input_tokens ?? 0,
+    cacheReadInputTokens: msg.usage.cache_read_input_tokens ?? 0,
   };
+}
+
+export type GenerateStructuredResult<T> = {
+  data: T | null;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+};
+
+/**
+ * Non-streaming generation that returns schema-conforming JSON. Sends the
+ * schema via structured outputs (`output_config.format`, GA in SDK 0.110) so
+ * the API constrains decoding to it; on any API error, refusal, or parse
+ * failure it falls back to plain generate() + extractJson with the schema
+ * inlined as an instruction, so callers that pass a schema still work.
+ * `data` is null only when even the fallback yields nothing.
+ */
+export async function generateStructured<T = unknown>(opts: {
+  model?: string;
+  effort?: string;
+  system: string | SystemPromptParts;
+  turns: ChatTurn[];
+  maxTokens?: number;
+  /** JSON schema the response must conform to. Structured outputs require
+   * `additionalProperties: false` (and a `required` list) on every object. */
+  schema: Record<string, unknown>;
+  /** Optional label folded into the schema `title` (model hint + debugging). */
+  schemaName?: string;
+  signal?: AbortSignal;
+}): Promise<GenerateStructuredResult<T>> {
+  const { model, effort } = resolveModel(
+    opts.model ?? DEFAULT_GENERATE_MODEL,
+    opts.effort ?? "high",
+  );
+  const schema =
+    opts.schemaName && !("title" in opts.schema)
+      ? { title: opts.schemaName, ...opts.schema }
+      : opts.schema;
+
+  // Token totals accumulate across the structured attempt and the fallback so
+  // callers meter the real cost even when both requests run.
+  const tokens = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
+  };
+
+  try {
+    const params: Anthropic.MessageCreateParamsNonStreaming = {
+      model: model.id,
+      max_tokens: opts.maxTokens ?? 8000,
+      system: buildSystemBlocks(opts.system),
+      messages: toMessages(opts.turns),
+      output_config: effort
+        ? { effort, format: { type: "json_schema", schema } }
+        : { format: { type: "json_schema", schema } },
+    };
+    if (model.adaptiveThinking) params.thinking = { type: "adaptive" };
+
+    const msg = await anthropic().messages.create(
+      params,
+      opts.signal ? { signal: opts.signal } : undefined,
+    );
+    tokens.inputTokens += msg.usage.input_tokens;
+    tokens.outputTokens += msg.usage.output_tokens;
+    tokens.cacheCreationInputTokens +=
+      msg.usage.cache_creation_input_tokens ?? 0;
+    tokens.cacheReadInputTokens += msg.usage.cache_read_input_tokens ?? 0;
+
+    // On refusal the output is not schema-conforming; let the fallback try.
+    if (msg.stop_reason !== "refusal") {
+      const text = msg.content
+        .filter((b): b is Anthropic.TextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("\n")
+        .trim();
+      try {
+        return { data: JSON.parse(text) as T, model: model.id, ...tokens };
+      } catch {
+        // Truncated (stop_reason max_tokens) or otherwise malformed — salvage
+        // what we can before paying for the fallback request.
+        const salvaged = extractJson<T>(text);
+        if (salvaged !== null)
+          return { data: salvaged, model: model.id, ...tokens };
+      }
+    }
+  } catch (err) {
+    console.error("generateStructured: structured call failed, falling back:", err);
+  }
+
+  // Fallback path (pre-structured-outputs behavior): plain generation with the
+  // schema inlined as an instruction, then best-effort JSON extraction.
+  try {
+    const fallback = await generate({
+      model: model.id,
+      effort: effort ?? undefined,
+      system: `${joinSystemParts(opts.system)}\n\nRespond ONLY with a single JSON value (no prose, no code fences) that conforms to this JSON schema:\n${JSON.stringify(schema)}`,
+      turns: opts.turns,
+      maxTokens: opts.maxTokens,
+      signal: opts.signal,
+    });
+    tokens.inputTokens += fallback.inputTokens;
+    tokens.outputTokens += fallback.outputTokens;
+    tokens.cacheCreationInputTokens += fallback.cacheCreationInputTokens;
+    tokens.cacheReadInputTokens += fallback.cacheReadInputTokens;
+    // A successful request that yields unparseable JSON returns data:null
+    // (caller decides how to handle "model gave no usable output").
+    return { data: extractJson<T>(fallback.text), model: model.id, ...tokens };
+  } catch (err) {
+    // Both the structured call AND the fallback threw — a real API failure
+    // (outage/overload/persistent error), not "empty output". Re-throw so
+    // callers surface an error to the user instead of silently persisting an
+    // empty document (matches the pre-migration generate() behavior, which
+    // threw on API failure).
+    console.error("generateStructured: fallback call failed:", err);
+    throw err;
+  }
 }
 
 /** Extract the first JSON object/array from a model response. */

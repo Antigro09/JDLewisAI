@@ -10,7 +10,7 @@ import {
   meetingSessions,
 } from "@/lib/db/schema";
 import type { MeetingState } from "@/lib/db/schema";
-import { runAgent, text, type AgentContext } from "./base";
+import { runAgent, objectSchema, text, type AgentContext } from "./base";
 
 /**
  * Memory / RAG agent (spec §13). When the discussion references a drawing, spec,
@@ -23,6 +23,19 @@ type RelatedKnowledge = NonNullable<MeetingState["relatedKnowledge"]>;
 
 type Refs = { references?: { term?: string; refType?: string }[] };
 
+const schema = objectSchema({
+  references: {
+    type: "array",
+    items: objectSchema({
+      term: { type: "string" },
+      refType: {
+        type: "string",
+        enum: ["drawing", "spec", "rfi", "submittal", "vendor", "equipment"],
+      },
+    }),
+  },
+});
+
 export async function runMemoryRagAgent(ctx: AgentContext): Promise<RelatedKnowledge> {
   const system = `You are the Memory/RAG agent for a general contractor. From the transcript,
 extract concrete references to company knowledge worth looking up: drawings, specifications, RFIs,
@@ -34,6 +47,7 @@ Return STRICT JSON only: {"references":[{"term":"...","refType":"drawing|spec|rf
     ctx,
     agent: "memory_rag",
     system,
+    schema,
     model: ctx.liveModel,
     maxTokens: 700,
     user: `Transcript:\n${ctx.transcript}`,

@@ -1,5 +1,13 @@
 import type { MeetingEventType } from "@/lib/db/schema";
-import { runAgent, eventType, text, clampConfidence, EVENT_TYPES, type AgentContext } from "./base";
+import {
+  runAgent,
+  objectSchema,
+  eventType,
+  text,
+  clampConfidence,
+  EVENT_TYPES,
+  type AgentContext,
+} from "./base";
 
 /**
  * Conversation / Classifier agent (spec §7). Understands the discussion rather
@@ -23,6 +31,14 @@ type Raw = {
   confidence?: number;
 };
 
+const schema = objectSchema({
+  categories: { type: "array", items: { type: "string", enum: EVENT_TYPES } },
+  currentTopic: { type: "string" },
+  meetingStage: { type: "string" },
+  gist: { type: "string" },
+  confidence: { type: "integer" },
+});
+
 export async function runClassifierAgent(ctx: AgentContext): Promise<ClassifierResult> {
   const system = `You are the Conversation Classifier agent for a general contractor's Meeting
 Intelligence system. Understand the discussion; do not summarize line by line.
@@ -35,6 +51,7 @@ Return STRICT JSON only: {"categories":[...],"currentTopic":"...","meetingStage"
     ctx,
     agent: "classifier",
     system,
+    schema,
     model: ctx.liveModel,
     maxTokens: 800,
     user: `Meeting: ${ctx.meetingTitle}\n\nTranscript:\n${ctx.transcript}`,

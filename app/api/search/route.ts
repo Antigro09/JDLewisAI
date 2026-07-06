@@ -4,9 +4,30 @@ import { db } from "@/lib/db";
 import { projectFiles, projects } from "@/lib/db/schema";
 import { getCurrentUser } from "@/lib/auth/server";
 import { generate } from "@/lib/claude/chat";
+import { embeddingsConfigured } from "@/lib/embeddings";
+import {
+  ensureProjectFileEmbeddings,
+  semanticSearchProjectFiles,
+  isTextExtractableFile,
+  type ProjectFileHit,
+} from "@/lib/retrieval";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+/** A source passage the answer was grounded on, surfaced to the UI. */
+type Citation = {
+  index: number;
+  fileId: string;
+  fileName: string;
+  projectId: string;
+  projectName: string;
+  chunkIndex: number;
+  snippet: string;
+  score: number;
+};
+
+const SEMANTIC_TOP_K = 12;
 
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
@@ -32,11 +53,7 @@ export async function POST(req: NextRequest) {
   );
   const files = allFiles.flat();
 
-  const textFiles = files.filter(
-    (f) =>
-      f.mime.startsWith("text/") ||
-      ["application/json", "application/xml", "application/csv"].includes(f.mime)
-  );
+  const textFiles = files.filter((f) => isTextExtractableFile(f.mime));
 
   if (textFiles.length === 0) {
     return NextResponse.json({
@@ -45,7 +62,68 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Build context from text files (cap at 60k chars total)
+  // Semantic path: rank chunks by relevance via pgvector and ground the answer
+  // on cited passages. Falls through to the full-text dump when embeddings
+  // aren't configured or the vector search comes back empty (e.g. pgvector
+  // extension missing — semanticSearchProjectFiles logs and returns []).
+  if (embeddingsConfigured()) {
+    const hits: (ProjectFileHit & { projectId: string })[] = [];
+    for (const pid of projectIds) {
+      await ensureProjectFileEmbeddings(pid);
+      const projectHits = await semanticSearchProjectFiles(pid, query, SEMANTIC_TOP_K);
+      hits.push(...projectHits.map((h) => ({ ...h, projectId: pid })));
+    }
+    hits.sort((a, b) => b.score - a.score);
+    const top = hits.slice(0, SEMANTIC_TOP_K);
+
+    if (top.length > 0) {
+      const projectName = (pid: string) =>
+        userProjects.find((p) => p.id === pid)?.name ?? "Unknown";
+      const passages = top
+        .map(
+          (h, i) =>
+            `[${i + 1}] File: ${h.fileName} (Project: ${projectName(h.projectId)})\n${h.content}`,
+        )
+        .join("\n\n---\n\n");
+
+      const system = `You are a construction AI assistant with access to the company's project knowledge base.
+Answer the user's question using only the numbered source passages provided.
+Cite the passages you rely on inline with bracketed numbers like [1] or [2][3].
+If the answer isn't in the passages, say so clearly. Be concise and specific.`;
+
+      const result = await generate({
+        effort: "medium",
+        system,
+        maxTokens: 2000,
+        turns: [
+          {
+            role: "user",
+            text: `Source passages from project files:\n\n${passages}\n\n---\n\nQuestion: ${query}`,
+          },
+        ],
+      });
+
+      const citations: Citation[] = top.map((h, i) => ({
+        index: i + 1,
+        fileId: h.fileId,
+        fileName: h.fileName,
+        projectId: h.projectId,
+        projectName: projectName(h.projectId),
+        chunkIndex: h.chunkIndex,
+        snippet: h.content.slice(0, 240),
+        score: Math.round(h.score * 1000) / 1000,
+      }));
+
+      return NextResponse.json({
+        answer: result.text,
+        filesSearched: textFiles.length,
+        citations,
+      });
+    }
+  }
+
+  // Fallback (no embeddings key, or vector search unavailable): the original
+  // unranked full-text dump, capped at 60k chars total.
   let budget = 60_000;
   const chunks: string[] = [];
   for (const f of textFiles) {
@@ -79,5 +157,5 @@ If the answer isn't in the files, say so clearly. Be concise and specific.`;
     ],
   });
 
-  return NextResponse.json({ answer: result.text, filesSearched: textFiles.length });
+  return NextResponse.json({ answer: result.text, filesSearched: textFiles.length, citations: [] });
 }

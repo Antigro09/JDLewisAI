@@ -1,4 +1,5 @@
-import { generate, extractJson, type GenerateResult } from "@/lib/claude/chat";
+import { generateStructured, type GenerateResult } from "@/lib/claude/chat";
+import { MECHANICAL_MODEL } from "@/lib/claude/models";
 
 /**
  * Material takeoff engine — drawings in, CSI-organized material quantities out.
@@ -71,7 +72,7 @@ export function parseFeetInches(
     return Number.isFinite(raw) ? (defaultUnit === "in" ? raw / 12 : raw) : null;
   }
   // Normalize curly quotes and unicode fraction slash, collapse whitespace.
-  let s = raw
+  const s = raw
     .replace(/[‘’′]/g, "'")
     .replace(/[“”″]/g, '"')
     .replace(/⁄/g, "/")
@@ -931,6 +932,83 @@ Output STRICT JSON only:
   "source": "dimension_string"|"schedule"|"traced"|"estimated", "confidence": number|null,
   "notes": string|null } ] } ] }`;
 
+/** Structured outputs require every property listed in `required`, so
+ *  "absent" is expressed as an explicit null (matching the prompt's shape). */
+const nullable = (schema: Record<string, unknown>) => ({
+  anyOf: [schema, { type: "null" }],
+});
+
+/** Enforced via structured outputs — mirrors the shape in EXTRACTION_SYSTEM
+ *  (and RawSheet/RawMeasurement) exactly. */
+const EXTRACTION_SCHEMA = {
+  type: "object",
+  properties: {
+    sheets: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          pageNumber: { type: "number" },
+          sheetId: nullable({ type: "string" }),
+          sheetTitle: nullable({ type: "string" }),
+          scaleText: nullable({ type: "string" }),
+          measurements: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                kind: { type: "string", enum: ["count", "length", "area", "volume"] },
+                trade: { type: "string", enum: [...TRADES] },
+                assembly: nullable({ type: "string" }),
+                label: { type: "string" },
+                count: nullable({ type: "number" }),
+                dims: nullable({
+                  type: "object",
+                  properties: {
+                    length: nullable({ type: "string" }),
+                    width: nullable({ type: "string" }),
+                    height: nullable({ type: "string" }),
+                    depth: nullable({ type: "string" }),
+                    value: nullable({ type: "string" }),
+                    valueUnit: nullable({
+                      type: "string",
+                      enum: ["LF", "SF", "SY", "CY", "CF"],
+                    }),
+                  },
+                  required: ["length", "width", "height", "depth", "value", "valueUnit"],
+                  additionalProperties: false,
+                }),
+                source: {
+                  type: "string",
+                  enum: ["dimension_string", "schedule", "traced", "estimated"],
+                },
+                confidence: nullable({ type: "number" }),
+                notes: nullable({ type: "string" }),
+              },
+              required: [
+                "kind",
+                "trade",
+                "assembly",
+                "label",
+                "count",
+                "dims",
+                "source",
+                "confidence",
+                "notes",
+              ],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ["pageNumber", "sheetId", "sheetTitle", "scaleText", "measurements"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["sheets"],
+  additionalProperties: false,
+};
+
 export type SheetExtraction = {
   fileName: string;
   sheets: RawSheet[];
@@ -966,30 +1044,33 @@ export async function extractSheetMeasurements(opts: {
     : "SCOPE: full takeoff — all trades.";
   const assemblyIds = ASSEMBLIES.map((a) => `${a.id} (${a.appliesTo}: ${a.label})`).join("; ");
 
-  const run = () =>
-    generate({
-      model: opts.model,
-      effort: "high",
-      system: EXTRACTION_SYSTEM,
-      maxTokens: 8000,
-      turns: [
-        {
-          role: "user",
-          text: `${scopeNote}\nKnown assembly ids: ${assemblyIds}\nRead every page of this document and return JSON only.`,
-          attachments: [
-            { mime: file.mime, name: file.fileName, dataBase64: file.fileBase64 },
-          ],
-        },
-      ],
-    });
+  // Structured outputs constrain decoding to EXTRACTION_SCHEMA, so one call
+  // replaces the old parse-and-retry (generateStructured has its own fallback
+  // ladder — a malformed reply still doesn't lose the whole document).
+  const { data: parsed, ...meta } = await generateStructured<{
+    sheets?: RawSheet[];
+  }>({
+    // Verbatim transcription is mechanical — default to the cheap model.
+    model: opts.model ?? MECHANICAL_MODEL,
+    effort: "high",
+    system: EXTRACTION_SYSTEM,
+    maxTokens: 8000,
+    schema: EXTRACTION_SCHEMA,
+    schemaName: "sheet_extraction",
+    turns: [
+      {
+        role: "user",
+        text: `${scopeNote}\nKnown assembly ids: ${assemblyIds}\nRead every page of this document and return JSON only.`,
+        attachments: [
+          { mime: file.mime, name: file.fileName, dataBase64: file.fileBase64 },
+        ],
+      },
+    ],
+  });
+  // Structured path returns parsed data, not raw text — keep the GenerateResult
+  // shape callers meter against.
+  const usage: GenerateResult = { text: "", ...meta };
 
-  let usage = await run();
-  let parsed = extractJson<{ sheets?: RawSheet[] }>(usage.text);
-  if (!parsed?.sheets) {
-    // One retry — a malformed JSON reply must not lose the whole document.
-    usage = await run();
-    parsed = extractJson<{ sheets?: RawSheet[] }>(usage.text);
-  }
   if (!parsed?.sheets || !Array.isArray(parsed.sheets)) {
     throw new Error(`Could not extract structured measurements from ${file.fileName}.`);
   }

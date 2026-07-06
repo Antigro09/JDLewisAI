@@ -9,7 +9,13 @@ import { effectivePlugins } from "@/lib/plugins";
 import { buildChatSystem } from "@/lib/data";
 import { resolveContainerSkills } from "@/lib/skills";
 import { resolveActiveMcpServers } from "@/lib/mcp/connections";
-import { WEB_TOOLS_NOTE, MCP_TOOLS_NOTE } from "@/lib/claude/system";
+import {
+  WEB_TOOLS_NOTE,
+  MCP_TOOLS_NOTE,
+  RESEARCH_MODE_NOTE,
+  SELF_CHECK_NOTE,
+  VOICE_MODE_NOTE,
+} from "@/lib/claude/system";
 import { getMode } from "@/lib/claude/modes";
 import { createNotification, maybeSendEmailNotification } from "@/lib/notifications";
 
@@ -61,19 +67,33 @@ export async function POST(req: Request) {
   const plugins = await effectivePlugins(user.id);
   const googleEnabled =
     plugins.google !== false && (await isGoogleConnected(user.id));
-  const webSearch = plugins.web_search === true;
   const containerSkills = await resolveContainerSkills(user, conv.skillIds);
   const mcp = await resolveActiveMcpServers(user.id);
-  let system = await buildChatSystem(
+
+  // Per-turn options persisted when the turn paused — resume with the exact
+  // model/toggles the original message used (legacy rows fall back to the
+  // conversation defaults + client-echoed mode).
+  const resume = pending[0]?.resume;
+  const researchMode = Boolean(resume?.researchMode);
+  const webSearch = resume?.webSearch ?? plugins.web_search === true;
+  const modeId = resume?.mode ?? body.mode;
+
+  const system = await buildChatSystem(
     user,
     { projectId: conv.projectId, skillIds: conv.skillIds },
     googleEnabled,
   );
-  const mode = getMode(body.mode);
-  if (mode?.note) system = `${system}\n\n${mode.note}`;
-  if (webSearch) system = `${system}\n\n${WEB_TOOLS_NOTE}`;
   if (mcp.servers.length)
-    system = `${system}\n\n${MCP_TOOLS_NOTE}\nConnected apps: ${mcp.servers.map((s) => s.name).join(", ")}.`;
+    system.stable = `${system.stable}\n\n${MCP_TOOLS_NOTE}\nConnected apps: ${mcp.servers.map((s) => s.name).join(", ")}.`;
+  // Rebuild the same volatile suffix the paused turn ran with (see /api/chat).
+  const mode = getMode(modeId);
+  const volatile: string[] = [];
+  if (mode?.note) volatile.push(mode.note);
+  if (webSearch && !researchMode) volatile.push(WEB_TOOLS_NOTE);
+  if (researchMode) volatile.push(RESEARCH_MODE_NOTE);
+  if (resume?.selfCheck) volatile.push(SELF_CHECK_NOTE);
+  if (resume?.voice) volatile.push(VOICE_MODE_NOTE);
+  system.volatile = volatile.join("\n\n");
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -93,13 +113,21 @@ export async function POST(req: Request) {
         for await (const ev of runAgentTurn({
           userId: user.id,
           conversationId,
-          model: conv.model,
-          effort: conv.effort,
+          model: resume?.model ?? conv.model,
+          effort: resume?.effort ?? conv.effort,
           system,
           googleEnabled,
           webSearch,
+          researchMode,
+          thinking: resume?.thinking,
           containerSkills,
           mcp,
+          // Carry the flags forward in case this resumed turn pauses again.
+          resumeContext: {
+            mode: modeId,
+            selfCheck: resume?.selfCheck,
+            voice: resume?.voice,
+          },
           signal: req.signal,
         })) {
           send(ev);

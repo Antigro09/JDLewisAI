@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { invoices, type InvoiceStatus } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/server";
+import { readUploadOrThrow } from "@/lib/uploads";
 import { extractInvoice } from "@/lib/tools/invoice";
 import { recordUsage } from "@/lib/usage";
 
@@ -16,13 +17,15 @@ export async function uploadInvoiceAction(formData: FormData) {
   const file = formData.get("file");
   const projectId = String(formData.get("projectId") ?? "") || null;
   if (!(file instanceof File) || file.size === 0) return;
-  if (file.size > MAX_FILE_BYTES) throw new Error("File exceeds 15 MB limit");
 
   const allowed =
     file.type.startsWith("image/") || file.type === "application/pdf";
   if (!allowed) throw new Error("Upload an image or PDF invoice");
 
-  const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
+  // Enforces the size ceiling and magic-byte/MIME consistency.
+  const base64 = (
+    await readUploadOrThrow(file, { maxBytes: MAX_FILE_BYTES })
+  ).toString("base64");
 
   const { data, usage } = await extractInvoice({
     fileBase64: base64,

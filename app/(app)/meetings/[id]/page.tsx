@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { companies } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/server";
 import { loadMeetingBundle } from "@/lib/meetings/access";
 import { isGoogleConnected } from "@/lib/google/client";
@@ -21,10 +24,19 @@ export default async function MeetingDetailPage({
   const { autostart } = await searchParams;
   const bundle = await loadMeetingBundle(user, id);
   if (!bundle) notFound();
-  const [googleConnected, profiles] = await Promise.all([
+  const [googleConnected, profiles, consentPolicyRows] = await Promise.all([
     isGoogleConnected(user.id),
     listSpeakerProfiles(bundle.meeting.companyId),
+    db
+      .select({
+        recordingConsentRequired: companies.recordingConsentRequired,
+        recordingConsentText: companies.recordingConsentText,
+      })
+      .from(companies)
+      .where(eq(companies.id, bundle.meeting.companyId))
+      .limit(1),
   ]);
+  const consentPolicy = consentPolicyRows[0];
 
   return (
     <div className="h-full overflow-y-auto">
@@ -41,6 +53,8 @@ export default async function MeetingDetailPage({
           googleConnected={googleConnected}
           speakerProfiles={profiles.map((p) => ({ id: p.id, displayName: p.displayName }))}
           autoStart={autostart === "1"}
+          consentRequired={consentPolicy?.recordingConsentRequired ?? false}
+          consentText={consentPolicy?.recordingConsentText ?? null}
         />
       </div>
     </div>

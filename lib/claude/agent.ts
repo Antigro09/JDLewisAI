@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import type Anthropic from "@anthropic-ai/sdk";
 import { db } from "@/lib/db";
 import {
   conversations,
@@ -7,12 +8,15 @@ import {
 } from "@/lib/db/schema";
 import { anthropic } from "./client";
 import { resolveModel } from "./models";
-import { attachmentBlocks } from "./chat";
-import type { Attachment } from "./types";
+import { attachmentBlocks, buildSystemBlocks } from "./chat";
+import { classifyModelError } from "./errors";
+import { UNTRUSTED_MARKER_BEGIN, UNTRUSTED_MARKER_END } from "./system";
+import type { Attachment, SystemPromptParts } from "./types";
 import {
   getGoogleTool,
   googleToolDefinitions,
   runGoogleTool,
+  type ToolExecutionContext,
 } from "@/lib/tools/google-tools";
 import {
   getLocalTool,
@@ -24,6 +28,46 @@ import { recordAudit } from "@/lib/audit";
 import { appendMessage, buildActivePath } from "@/lib/chat/branches";
 
 const MAX_STEPS = 8;
+
+/** Stored attachments above this size are not resent to the model on later
+ * turns (they degrade to a text placeholder) to keep request sizes sane. */
+const MAX_RESEND_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
+/** Context compaction strategy: server-side context editing (beta
+ * context-management-2025-06-27). Once a tool-heavy conversation grows past
+ * the trigger, the API clears the CONTENT of the oldest tool results before
+ * the model sees them — we never mutate stored history or apiMessages, so
+ * tool_use/tool_result pairing, assistant rawContent (thinking signatures),
+ * the 3 cache breakpoints, and pending-tool resume are all untouched. Below
+ * the trigger the server clears nothing, so short conversations render
+ * byte-for-byte identically. If the beta is ever rejected, the in-process
+ * flag below flips and the step retries without it (no compaction, no hard
+ * failure). */
+const CONTEXT_EDITING_BETA = "context-management-2025-06-27";
+const CONTEXT_EDITING: Anthropic.Beta.BetaContextManagementConfig = {
+  edits: [
+    {
+      type: "clear_tool_uses_20250919",
+      // Generous trigger (~100k input tokens ≈ hours of tool use); keep the
+      // newest 5 tool results fully intact; skip edits that would reclaim
+      // under 5k tokens so the prompt cache isn't churned for scraps.
+      trigger: { type: "input_tokens", value: 100_000 },
+      keep: { type: "tool_uses", value: 5 },
+      clear_at_least: { type: "input_tokens", value: 5_000 },
+    },
+  ],
+};
+/** Flips off for the life of the process (single long-lived EC2 node) the
+ * first time the API rejects the context-management beta. */
+let contextEditingSupported = true;
+
+/** 400 that names context management — the only error worth a silent retry
+ * without the beta. Anything else propagates to classifyModelError as usual. */
+function isContextEditingRejection(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const status = (err as { status?: number }).status;
+  return status === 400 && /context.management/i.test(err.message);
+}
 
 export type AgentEvent =
   | { type: "text"; text: string }
@@ -39,11 +83,31 @@ export type AgentEvent =
       type: "tool_request";
       pending: { id: string; name: string; kind: "read" | "write"; summary: string }[];
     }
-  | { type: "error"; message: string }
+  | { type: "error"; message: string; retryable?: boolean }
   | { type: "done"; inputTokens: number; outputTokens: number };
 
 type ApiContentBlock = Record<string, unknown>;
 type ApiMessage = { role: "user" | "assistant"; content: ApiContentBlock[] };
+
+/** Attachment → API blocks, loosened to sit alongside raw stored JSON blocks. */
+function attachmentApiBlocks(a: Attachment): ApiContentBlock[] {
+  return attachmentBlocks(a) as unknown as ApiContentBlock[];
+}
+
+/** Fence attacker-controlled tool output (Gmail/Drive content etc.) in the
+ * markers UNTRUSTED_CONTENT_NOTE declares to be data, never instructions. Any
+ * run of angle brackets around the marker token is collapsed to a bracket-free
+ * placeholder — a simple split/join that only stripped the exact 3-bracket
+ * marker could be defeated by bracket padding (e.g. `<<<<END…>>>>` rebuilds the
+ * real marker after one pass), so we match `<{2,}TOKEN>{2,}` and leave no
+ * brackets behind for a second reassembly. */
+function wrapUntrusted(output: string): string {
+  const neutralized = output.replace(
+    /<{2,}(BEGIN|END)_EXTERNAL_UNTRUSTED_CONTENT>{2,}/g,
+    "[external-marker]",
+  );
+  return `${UNTRUSTED_MARKER_BEGIN}\n${neutralized}\n${UNTRUSTED_MARKER_END}`;
+}
 
 /** Loads the conversation's active branch only — not every message ever sent
  * in every branch — so the model never sees content from an inactive branch. */
@@ -86,8 +150,25 @@ function buildApiMessages(
             content: b.output,
             ...(b.isError ? { is_error: true } : {}),
           });
-        else if (b.type === "image" || b.type === "document")
-          content.push({ type: "text", text: `[Attachment: ${b.name}]` });
+        else if (b.type === "image" || b.type === "document") {
+          // Resend the real attachment bytes so the model keeps seeing them on
+          // later turns; legacy rows without bytes (and oversized files) fall
+          // back to a text placeholder.
+          const bytes = b.dataBase64
+            ? Math.floor((b.dataBase64.length * 3) / 4)
+            : 0;
+          if (b.dataBase64 && bytes <= MAX_RESEND_ATTACHMENT_BYTES) {
+            content.push(
+              ...attachmentApiBlocks({
+                mime: b.mime,
+                name: b.name,
+                dataBase64: b.dataBase64,
+              }),
+            );
+          } else {
+            content.push({ type: "text", text: `[Attachment: ${b.name}]` });
+          }
+        }
       }
       if (content.length) out.push({ role: "user", content });
     }
@@ -114,17 +195,58 @@ function contentToBlocks(content: ApiContentBlock[]): MessageBlock[] {
   return blocks;
 }
 
+/** Block types that accept a cache_control marker. */
+const CACHEABLE_BLOCK_TYPES = new Set([
+  "text",
+  "image",
+  "document",
+  "tool_use",
+  "tool_result",
+]);
+
+/** Cache breakpoint 3 of 3: strip stale cache markers from the history, then
+ * mark the most recent cacheable block so each agent step (and the next turn)
+ * re-reads the entire prior conversation from cache. */
+function markHistoryCache(messages: ApiMessage[]): ApiMessage[] {
+  const out = messages.map((m) => ({
+    role: m.role,
+    content: m.content.map((b) => {
+      if ("cache_control" in b) {
+        const rest: ApiContentBlock = { ...b };
+        delete rest.cache_control;
+        return rest;
+      }
+      return b;
+    }),
+  }));
+  outer: for (let i = out.length - 1; i >= 0; i--) {
+    const content = out[i].content;
+    for (let j = content.length - 1; j >= 0; j--) {
+      if (CACHEABLE_BLOCK_TYPES.has(String(content[j].type))) {
+        content[j] = { ...content[j], cache_control: { type: "ephemeral" } };
+        break outer;
+      }
+    }
+  }
+  return out;
+}
+
 export type RunAgentOptions = {
   userId: string;
   conversationId: string;
   model: string;
   effort: string;
-  system: string;
+  /** Plain string (automations) or stable/volatile pair (chat routes) — the
+   * stable part gets a cache breakpoint, the volatile part rides after it. */
+  system: string | SystemPromptParts;
   googleEnabled: boolean;
   liveAttachments?: Attachment[];
   liveText?: string;
   /** Execute write/send tools without pausing (unattended automation runs). */
   autoApprove?: boolean;
+  /** Threaded into external tool executors; unattended runs carry the
+   * automation's send guardrails (recipient allowlist + daily cap). */
+  execContext?: ToolExecutionContext;
   /** Restrict which Google tools are available (by tool name). */
   toolNames?: string[];
   /** Usage-metering feature label (default "chat"). */
@@ -142,6 +264,9 @@ export type RunAgentOptions = {
     servers: unknown[];
     toolsets: unknown[];
   };
+  /** Route-level prompt-note flags persisted with a paused turn so the
+   * confirm/resume path can rebuild the same volatile system suffix. */
+  resumeContext?: { mode?: string; selfCheck?: boolean; voice?: boolean };
   /** Abort signal — stops generation when the client cancels the request. */
   signal?: AbortSignal;
 };
@@ -154,8 +279,7 @@ export type RunAgentOptions = {
 export async function* runAgentTurn(
   opts: RunAgentOptions,
 ): AsyncGenerator<AgentEvent> {
-  const { model } = resolveModel(opts.model, opts.effort);
-  const { effort } = resolveModel(opts.model, opts.effort);
+  const { model, effort } = resolveModel(opts.model, opts.effort);
 
   const rows = await loadMessages(opts.conversationId);
   const apiMessages = buildApiMessages(rows);
@@ -166,7 +290,7 @@ export async function* runAgentTurn(
     if (last.role === "user") {
       const blocks: ApiContentBlock[] = [];
       for (const a of opts.liveAttachments)
-        blocks.push(...(attachmentBlocks(a) as ApiContentBlock[]));
+        blocks.push(...attachmentApiBlocks(a));
       if (opts.liveText) blocks.push({ type: "text", text: opts.liveText });
       last.content = blocks.length ? blocks : last.content;
     }
@@ -180,6 +304,15 @@ export async function* runAgentTurn(
     let g = googleToolDefinitions();
     if (opts.toolNames) g = g.filter((d) => opts.toolNames!.includes(d.name));
     tools.push(...g);
+  }
+  // Cache breakpoint 2 of 3: mark the last CUSTOM tool definition. Server-tool
+  // entries (which reject cache_control) are appended after this point, so
+  // custom tools stay first and form a cacheable prefix.
+  if (tools.length) {
+    tools[tools.length - 1] = {
+      ...(tools[tools.length - 1] as Record<string, unknown>),
+      cache_control: { type: "ephemeral" },
+    };
   }
   // Container-executed skills (Skills API) run in a code-execution sandbox on
   // Opus/Sonnet-tier models. Haiku can't run code execution, so skip there.
@@ -219,6 +352,17 @@ export async function* runAgentTurn(
   const maxSteps = opts.researchMode ? 16 : MAX_STEPS;
   let inTok = 0;
   let outTok = 0;
+  let cacheWriteTok = 0;
+  let cacheReadTok = 0;
+  let webSearchReqs = 0;
+  // In-flight step usage captured from stream events, so a step cut short by
+  // abort or a mid-stream error (where finalMessage() never resolves) is still
+  // metered. Zeroed once finalMessage() lands; folded into totals in finally.
+  let stepIn = 0;
+  let stepOut = 0;
+  let stepCacheW = 0;
+  let stepCacheR = 0;
+  let stepWebSearch = 0;
 
   const finish = async () => {
     await recordUsage({
@@ -227,23 +371,36 @@ export async function* runAgentTurn(
       feature: opts.usageFeature ?? "chat",
       inputTokens: inTok,
       outputTokens: outTok,
+      cacheCreationInputTokens: cacheWriteTok,
+      cacheReadInputTokens: cacheReadTok,
+      webSearchRequests: webSearchReqs,
     });
   };
 
   try {
     for (let step = 0; step < maxSteps; step++) {
-      const params: Record<string, unknown> = {
+      const params: Anthropic.Beta.MessageCreateParamsNonStreaming = {
         model: model.id,
         max_tokens: 16000,
-        system: opts.system,
-        messages: apiMessages,
+        // Cache breakpoint 1 of 3 lives on the stable system block.
+        system: buildSystemBlocks(opts.system),
+        // Stored rawContent blocks are untyped JSON from the DB — missing
+        // type: Anthropic.Beta.BetaMessageParam.
+        messages: markHistoryCache(
+          apiMessages,
+        ) as unknown as Anthropic.Beta.BetaMessageParam[],
       };
-      if (tools.length) params.tools = tools;
+      if (tools.length) {
+        // Tool defs come from lib/tools/* and lib/mcp with loose JSON schemas —
+        // missing type: Anthropic.Beta.BetaToolUnion.
+        params.tools = tools as unknown as Anthropic.Beta.BetaToolUnion[];
+      }
       if (model.adaptiveThinking && opts.thinking !== false)
         params.thinking = { type: "adaptive", display: "summarized" };
       if (effort) params.output_config = { effort };
-      // Skills API + MCP connector both require the beta Messages endpoint.
-      // Collect the betas each needs and add their request params.
+      // Skills API + MCP connector both need beta opt-ins. The request always
+      // goes through the beta endpoint (superset of the GA surface) so the
+      // whole loop shares one typed params shape.
       const betas: string[] = [];
       if (containerSkillsActive) {
         betas.push("code-execution-2025-08-25", "skills-2025-10-02");
@@ -257,48 +414,75 @@ export async function* runAgentTurn(
       }
       if (mcpActive) {
         betas.push("mcp-client-2025-11-20");
-        params.mcp_servers = opts.mcp!.servers;
+        // MCP server definitions are validated in lib/mcp/connections.ts —
+        // missing type: Anthropic.Beta.BetaRequestMCPServerURLDefinition.
+        params.mcp_servers = opts.mcp!
+          .servers as Anthropic.Beta.BetaRequestMCPServerURLDefinition[];
       }
-      const useBeta = betas.length > 0;
-      if (useBeta) params.betas = betas;
+      let final: Anthropic.Beta.BetaMessage;
+      // Normally one pass; a second pass only happens when the context-editing
+      // beta is rejected before anything streamed to the client.
+      for (;;) {
+        const attemptBetas = contextEditingSupported
+          ? [...betas, CONTEXT_EDITING_BETA]
+          : betas;
+        if (attemptBetas.length) params.betas = attemptBetas;
+        else delete params.betas;
+        if (contextEditingSupported) params.context_management = CONTEXT_EDITING;
+        else delete params.context_management;
 
-      const messagesApi = useBeta
-        ? anthropic().beta.messages
-        : anthropic().messages;
-      const stream = (
-        messagesApi as unknown as {
-          stream: (
-            p: unknown,
-            o?: { signal?: AbortSignal },
-          ) => AsyncIterable<Record<string, unknown>> & {
-            finalMessage: () => Promise<unknown>;
-          };
-        }
-      ).stream(params, opts.signal ? { signal: opts.signal } : undefined);
+        const stream = anthropic().beta.messages.stream(
+          params,
+          opts.signal ? { signal: opts.signal } : undefined,
+        );
 
-      for await (const event of stream) {
-        if (opts.signal?.aborted) break;
-        if (event.type === "content_block_delta") {
-          const delta = event.delta as Record<string, unknown> | undefined;
-          if (delta?.type === "thinking_delta")
-            yield { type: "thinking", text: String(delta.thinking ?? "") };
-          else if (delta?.type === "text_delta")
-            yield { type: "text", text: String(delta.text ?? "") };
+        // Guards the retry: never re-run a step whose output already reached
+        // the client (beta rejections 400 before any content streams).
+        let emitted = false;
+        try {
+          for await (const event of stream) {
+            if (opts.signal?.aborted) break;
+            if (event.type === "message_start") {
+              stepIn = event.message.usage.input_tokens;
+              stepCacheW = event.message.usage.cache_creation_input_tokens ?? 0;
+              stepCacheR = event.message.usage.cache_read_input_tokens ?? 0;
+            } else if (event.type === "message_delta") {
+              stepOut = event.usage.output_tokens; // cumulative
+              stepWebSearch = event.usage.server_tool_use?.web_search_requests ?? 0;
+            } else if (event.type === "content_block_delta") {
+              if (event.delta.type === "thinking_delta") {
+                emitted = true;
+                yield { type: "thinking", text: event.delta.thinking };
+              } else if (event.delta.type === "text_delta") {
+                emitted = true;
+                yield { type: "text", text: event.delta.text };
+              }
+            }
+          }
+
+          // Client stopped generation — halt without persisting this turn.
+          // (The partial step's usage is folded into totals in finally.)
+          if (opts.signal?.aborted) return;
+
+          final = await stream.finalMessage();
+          break;
+        } catch (err) {
+          if (contextEditingSupported && !emitted && isContextEditingRejection(err)) {
+            console.error("context-management beta rejected — disabling:", err);
+            contextEditingSupported = false;
+            continue; // retry this step without the beta
+          }
+          throw err;
         }
       }
+      inTok += final.usage.input_tokens;
+      outTok += final.usage.output_tokens;
+      cacheWriteTok += final.usage.cache_creation_input_tokens ?? 0;
+      cacheReadTok += final.usage.cache_read_input_tokens ?? 0;
+      webSearchReqs += final.usage.server_tool_use?.web_search_requests ?? 0;
+      stepIn = stepOut = stepCacheW = stepCacheR = stepWebSearch = 0;
 
-      // Client stopped generation — halt without persisting this turn.
-      if (opts.signal?.aborted) return;
-
-      const final = (await stream.finalMessage()) as {
-        content: ApiContentBlock[];
-        stop_reason?: string;
-        usage?: { input_tokens?: number; output_tokens?: number };
-      };
-      inTok += final.usage?.input_tokens ?? 0;
-      outTok += final.usage?.output_tokens ?? 0;
-
-      const content = final.content ?? [];
+      const content = final.content as unknown as ApiContentBlock[];
       apiMessages.push({ role: "assistant", content });
 
       // Persist the assistant turn (display blocks + verbatim rawContent).
@@ -308,8 +492,8 @@ export async function* runAgentTurn(
         blocks: contentToBlocks(content),
         rawContent: content,
         model: model.id,
-        inputTokens: final.usage?.input_tokens ?? 0,
-        outputTokens: final.usage?.output_tokens ?? 0,
+        inputTokens: final.usage.input_tokens,
+        outputTokens: final.usage.output_tokens,
       });
 
       const toolUses = content.filter((c) => c.type === "tool_use");
@@ -334,6 +518,16 @@ export async function* runAgentTurn(
           input: c.input,
           kind: c.kind,
         }));
+        // Persist the per-turn options the confirm/resume path needs to
+        // rebuild this exact request (first entry only).
+        pending[0].resume = {
+          model: opts.model,
+          effort: opts.effort,
+          researchMode: opts.researchMode,
+          webSearch: opts.webSearch,
+          thinking: opts.thinking,
+          ...opts.resumeContext,
+        };
         await db
           .update(conversations)
           .set({ pendingToolUses: pending, updatedAt: new Date() })
@@ -350,17 +544,20 @@ export async function* runAgentTurn(
               ) ?? p.name,
           })),
         };
-        await finish();
-        return; // pause until /api/chat/confirm
+        return; // pause until /api/chat/confirm — metering runs in finally
       }
 
       // All reads: execute now, append results, loop.
       const resultContent: ApiContentBlock[] = [];
       const resultBlocks: MessageBlock[] = [];
       for (const c of classified) {
-        const r = getLocalTool(c.name)
+        const local = getLocalTool(c.name);
+        const raw = local
           ? await runLocalTool(opts.userId, c.name, c.input)
-          : await runGoogleTool(opts.userId, c.name, c.input);
+          : await runGoogleTool(opts.userId, c.name, c.input, opts.execContext);
+        // Non-local tool output is attacker-controlled external content — fence
+        // it so the model treats it as data (see UNTRUSTED_CONTENT_NOTE).
+        const r = local ? raw : { ...raw, output: wrapUntrusted(raw.output) };
         await recordAudit({
           userId: opts.userId,
           action: `tool.${c.name}`,
@@ -402,13 +599,24 @@ export async function* runAgentTurn(
       .update(conversations)
       .set({ updatedAt: new Date() })
       .where(eq(conversations.id, opts.conversationId));
-    await finish();
     yield { type: "done", inputTokens: inTok, outputTokens: outTok };
   } catch (err) {
-    yield {
-      type: "error",
-      message: err instanceof Error ? err.message : "Agent run failed",
-    };
+    const friendly = classifyModelError(err);
+    if (friendly) {
+      console.error("runAgentTurn failed:", err);
+      yield { type: "error", ...friendly };
+    }
+    // null = client abort — no error event at all.
+  } finally {
+    // Meter every turn that consumed tokens exactly once — success, pause,
+    // error, or abort all pass through here. Fold in any step that was cut
+    // short before finalMessage() resolved.
+    inTok += stepIn;
+    outTok += stepOut;
+    cacheWriteTok += stepCacheW;
+    cacheReadTok += stepCacheR;
+    webSearchReqs += stepWebSearch;
+    if (inTok || outTok || cacheWriteTok || cacheReadTok) await finish();
   }
 }
 
@@ -438,11 +646,13 @@ export async function* applyPendingDecisions(opts: {
       yield { type: "tool_activity", tool: p.name, summary: "Declined by user" };
       continue;
     }
-    const r = await runGoogleTool(
+    const raw = await runGoogleTool(
       opts.userId,
       p.name,
       (p.input ?? {}) as Record<string, unknown>,
     );
+    // Same fencing as runAgentTurn: Google tool output is external content.
+    const r = { ...raw, output: wrapUntrusted(raw.output) };
     await recordAudit({
       userId: opts.userId,
       action: `tool.${p.name}`,

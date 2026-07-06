@@ -4,6 +4,7 @@ import {
   text,
   timestamp,
   integer,
+  doublePrecision,
   jsonb,
   boolean,
   index,
@@ -81,8 +82,10 @@ export type Personalization = {
 export type MessageBlock =
   | { type: "text"; text: string }
   | { type: "thinking"; text: string }
-  | { type: "image"; mime: string; name: string }
-  | { type: "document"; mime: string; name: string }
+  // dataBase64 holds the attachment bytes so later turns can resend the real
+  // image/document to the model (absent on legacy rows → text placeholder).
+  | { type: "image"; mime: string; name: string; dataBase64?: string }
+  | { type: "document"; mime: string; name: string; dataBase64?: string }
   // Replay-critical: assistant tool call (id) and its result (toolUseId).
   | { type: "tool_use"; id: string; name: string; input: unknown }
   | {
@@ -95,12 +98,29 @@ export type MessageBlock =
       isError?: boolean;
     };
 
+/** Per-turn options persisted when a turn pauses for tool confirmation, so the
+ * confirm/resume path can rebuild the exact request (model, toggles, prompt
+ * notes) instead of falling back to conversation defaults. */
+export type PendingResumeOptions = {
+  model: string;
+  effort: string;
+  researchMode?: boolean;
+  webSearch?: boolean;
+  thinking?: boolean;
+  /** Reasoning-mode id (lib/claude/modes.ts). */
+  mode?: string;
+  selfCheck?: boolean;
+  voice?: boolean;
+};
+
 /** A tool call awaiting user confirmation (stored on the conversation). */
 export type PendingToolUse = {
   id: string;
   name: string;
   input: unknown;
   kind: "read" | "write";
+  /** Resume options for the paused turn — set on the first entry only. */
+  resume?: PendingResumeOptions;
 };
 
 const id = () =>
@@ -116,7 +136,19 @@ export const users = pgTable("users", {
   role: text("role").$type<Role>().notNull().default("MEMBER"),
   personalization: jsonb("personalization").$type<Personalization>(),
   disabled: boolean("disabled").notNull().default(false),
+  // Bumped on password/role change or "sign out all devices"; JWTs carry the
+  // version they were minted with and are rejected when stale.
+  tokenVersion: integer("token_version").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+/** Durable fixed-window rate-limit counters (no external store needed).
+ * Key convention: "<scope>:<identifier>", e.g. "signin:203.0.113.7" or
+ * "signin-email:user@example.com". See lib/rate-limit.ts. */
+export const rateLimits = pgTable("rate_limits", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull().default(0),
+  windowStartAt: timestamp("window_start_at").notNull().defaultNow(),
 });
 
 /** Per-user Google OAuth linkage (Phase 2). Tokens stored encrypted. */
@@ -131,11 +163,22 @@ export const googleAccounts = pgTable("google_accounts", {
   scope: text("scope"),
   expiresAt: timestamp("expires_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => ({
+  userIdx: index("google_accounts_user_id_idx").on(t.userId),
+}));
 
 export const companies = pgTable("companies", {
   id: id(),
   name: text("name").notNull(),
+  // Meeting recording governance. Null retention = keep transcripts forever;
+  // a positive value lets the janitor purge transcript segments + embeddings
+  // older than N days. When consent is required, the client must show the
+  // notice and the session records acknowledgement before capture.
+  transcriptRetentionDays: integer("transcript_retention_days"),
+  recordingConsentRequired: boolean("recording_consent_required")
+    .notNull()
+    .default(false),
+  recordingConsentText: text("recording_consent_text"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 export type Company = typeof companies.$inferSelect;
@@ -399,7 +442,35 @@ export const projectFiles = pgTable("project_files", {
   sizeBytes: integer("size_bytes").notNull().default(0),
   data: text("data").notNull(), // base64-encoded content (MVP storage)
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => ({
+  projectIdx: index("project_files_project_id_idx").on(t.projectId),
+}));
+
+/** Chunked embeddings of text-extractable project files, for semantic Project
+ * Knowledge Search (pgvector KNN, mirroring meeting_embeddings). Populated
+ * lazily by lib/retrieval.ts when embeddings are configured; the search path
+ * falls back to Postgres full-text when they aren't. */
+export const projectFileEmbeddings = pgTable("project_file_embeddings", {
+  id: id(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  fileId: text("file_id")
+    .notNull()
+    .references(() => projectFiles.id, { onDelete: "cascade" }),
+  chunkIndex: integer("chunk_index").notNull().default(0),
+  content: text("content").notNull(),
+  embedding: vector("embedding", { dimensions: 1536 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  projectIdx: index("project_file_embeddings_project_id_idx").on(t.projectId),
+  fileIdx: index("project_file_embeddings_file_id_idx").on(t.fileId),
+  embeddingIdx: index("project_file_embeddings_embedding_idx").using(
+    "hnsw",
+    t.embedding.op("vector_cosine_ops"),
+  ),
+}));
+export type ProjectFileEmbedding = typeof projectFileEmbeddings.$inferSelect;
 
 export const conversations = pgTable("conversations", {
   id: id(),
@@ -429,7 +500,9 @@ export const conversations = pgTable("conversations", {
   ),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => ({
+  userIdx: index("conversations_user_id_idx").on(t.userId),
+}));
 
 export const messages = pgTable("messages", {
   id: id(),
@@ -450,7 +523,10 @@ export const messages = pgTable("messages", {
   inputTokens: integer("input_tokens").default(0),
   outputTokens: integer("output_tokens").default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => ({
+  conversationIdx: index("messages_conversation_id_idx").on(t.conversationId),
+  parentIdx: index("messages_parent_id_idx").on(t.parentId),
+}));
 
 export const artifacts = pgTable("artifacts", {
   id: id(),
@@ -524,9 +600,21 @@ export const usageEvents = pgTable("usage_events", {
   feature: text("feature").notNull().default("chat"),
   inputTokens: integer("input_tokens").notNull().default(0),
   outputTokens: integer("output_tokens").notNull().default(0),
-  costCents: integer("cost_cents").notNull().default(0),
+  // Prompt-cache token classes (billed at different rates than plain input).
+  cacheCreationInputTokens: integer("cache_creation_input_tokens")
+    .notNull()
+    .default(0),
+  cacheReadInputTokens: integer("cache_read_input_tokens")
+    .notNull()
+    .default(0),
+  // Fractional cents (double precision) so small Haiku calls stop rounding
+  // to $0.00; aggregate SUMs stay estimate-grade, which is all this is.
+  costCents: doublePrecision("cost_cents").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => ({
+  userIdx: index("usage_events_user_id_idx").on(t.userId),
+  createdIdx: index("usage_events_created_at_idx").on(t.createdAt),
+}));
 
 /** Scheduled, unattended automations (Phase 3). */
 export const automations = pgTable("automations", {
@@ -541,6 +629,14 @@ export const automations = pgTable("automations", {
   intervalMinutes: integer("interval_minutes").notNull().default(60),
   // When true, this automation may SEND email unattended (not just draft one).
   allowSend: boolean("allow_send").notNull().default(false),
+  // Unattended-send guardrails (enforced in code, not prompt): recipients must
+  // match an entry here — a full address ("a@b.com") or a domain ("@b.com").
+  // Null/empty means NO unattended sends even when allowSend is true.
+  sendAllowlist: jsonb("send_allowlist").$type<string[]>(),
+  // Hard cap on unattended sends per UTC day (counter below resets daily).
+  maxSendsPerDay: integer("max_sends_per_day").notNull().default(10),
+  sendsToday: integer("sends_today").notNull().default(0),
+  sendsTodayDate: text("sends_today_date"), // "YYYY-MM-DD" (UTC)
   model: text("model"),
   effort: text("effort"),
   state: jsonb("state").$type<Record<string, unknown>>(),
@@ -571,7 +667,9 @@ export const automationRuns = pgTable("automation_runs", {
   outputTokens: integer("output_tokens").notNull().default(0),
   startedAt: timestamp("started_at").notNull().defaultNow(),
   finishedAt: timestamp("finished_at"),
-});
+}, (t) => ({
+  automationIdx: index("automation_runs_automation_id_idx").on(t.automationId),
+}));
 
 export type Automation = typeof automations.$inferSelect;
 export type AutomationRun = typeof automationRuns.$inferSelect;
@@ -679,6 +777,13 @@ export const mcpConnections = pgTable("mcp_connections", {
   // Encrypted OAuth/bearer token (via lib/crypto); null for no-auth servers.
   authTokenEnc: text("auth_token_enc"),
   enabled: boolean("enabled").notNull().default(true),
+  // Write-tool gating: MCP tools execute server-side (Anthropic connects to
+  // the server directly), so gating happens by restricting which tools are
+  // exposed at request time. Default: read-only tools only.
+  allowWrites: boolean("allow_writes").notNull().default(false),
+  // Optional explicit tool allowlist (names). Null = all tools that pass the
+  // read/write policy above.
+  allowedTools: jsonb("allowed_tools").$type<string[]>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 export type McpConnection = typeof mcpConnections.$inferSelect;
@@ -821,7 +926,9 @@ export const notifications = pgTable("notifications", {
   link: text("link"),
   read: boolean("read").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => ({
+  userIdx: index("notifications_user_id_idx").on(t.userId),
+}));
 export type Notification = typeof notifications.$inferSelect;
 
 /** Audit trail (Phase 6): a record of AI actions for compliance & debugging. */
@@ -834,7 +941,10 @@ export const auditLog = pgTable("audit_log", {
   detail: text("detail"),
   conversationId: text("conversation_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => ({
+  userIdx: index("audit_log_user_id_idx").on(t.userId),
+  createdIdx: index("audit_log_created_at_idx").on(t.createdAt),
+}));
 export type AuditEntry = typeof auditLog.$inferSelect;
 
 export type DocumentTemplateKind =

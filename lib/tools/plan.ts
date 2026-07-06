@@ -1,4 +1,4 @@
-import { generate, extractJson, type GenerateResult } from "@/lib/claude/chat";
+import { generate, generateStructured, type GenerateResult } from "@/lib/claude/chat";
 
 const SYSTEM = `You are a construction plan reviewer with deep experience reading architectural,
 structural, electrical, and MEP drawings. You are given an image or PDF of a plan sheet.
@@ -85,6 +85,37 @@ Output STRICT JSON only, matching exactly this shape:
 If you genuinely cannot read door or wall information from the sheet, say so in "assumptions" and
 return conservative (possibly zero) numbers rather than guessing.`;
 
+/** Enforced via structured outputs — mirrors the shape in TAKEOFF_SYSTEM
+ * (dimensions are nullable: not every door is dimensioned on the sheet). */
+const TAKEOFF_SCHEMA = {
+  type: "object",
+  properties: {
+    doors: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          type: { type: "string" },
+          widthIn: { anyOf: [{ type: "number" }, { type: "null" }] },
+          heightIn: { anyOf: [{ type: "number" }, { type: "null" }] },
+          swing: { type: "string" },
+          count: { type: "number" },
+          location: { type: "string" },
+        },
+        required: ["id", "type", "widthIn", "heightIn", "swing", "count", "location"],
+        additionalProperties: false,
+      },
+    },
+    totalDoors: { type: "number" },
+    framingLinearFeet: { type: "number" },
+    framingNotes: { type: "string" },
+    assumptions: { type: "array", items: { type: "string" } },
+  },
+  required: ["doors", "totalDoors", "framingLinearFeet", "framingNotes", "assumptions"],
+  additionalProperties: false,
+};
+
 export async function analyzeDoorFramingTakeoff(opts: {
   fileBase64: string;
   mime: string;
@@ -95,11 +126,15 @@ export async function analyzeDoorFramingTakeoff(opts: {
   model?: string;
   effort?: string;
 }): Promise<{ data: DoorFramingTakeoff; usage: GenerateResult }> {
-  const usage = await generate({
+  const { data: parsed, ...meta } = await generateStructured<
+    Partial<DoorFramingTakeoff>
+  >({
     model: opts.model,
     effort: opts.effort ?? "high",
     system: TAKEOFF_SYSTEM,
     maxTokens: 4000,
+    schema: TAKEOFF_SCHEMA,
+    schemaName: "door_framing_takeoff",
     turns: [
       {
         role: "user",
@@ -112,8 +147,10 @@ JSON only.`,
       },
     ],
   });
+  // Structured path returns parsed data, not raw text — keep the GenerateResult
+  // shape callers meter against.
+  const usage: GenerateResult = { text: "", ...meta };
 
-  const parsed = extractJson<Partial<DoorFramingTakeoff>>(usage.text);
   const data: DoorFramingTakeoff = {
     doors: Array.isArray(parsed?.doors) ? parsed!.doors : [],
     totalDoors:

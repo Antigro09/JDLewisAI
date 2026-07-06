@@ -1,17 +1,12 @@
 import crypto from "node:crypto";
+import { env } from "@/lib/env";
 
 /**
  * AES-256-GCM encryption for secrets at rest (e.g. Google OAuth tokens).
- * ENCRYPTION_KEY must be a base64-encoded 32-byte key.
+ * ENCRYPTION_KEY is validated (base64, exactly 32 bytes) in lib/env.ts.
  */
 function key(): Buffer {
-  const b64 = process.env.ENCRYPTION_KEY;
-  if (!b64) throw new Error("ENCRYPTION_KEY is not set");
-  const k = Buffer.from(b64, "base64");
-  if (k.length !== 32) {
-    throw new Error("ENCRYPTION_KEY must decode to 32 bytes (base64)");
-  }
-  return k;
+  return Buffer.from(env.ENCRYPTION_KEY, "base64");
 }
 
 export function encryptSecret(plain: string): string {

@@ -1,5 +1,14 @@
 import type { MeetingEventType } from "@/lib/db/schema";
-import { runAgent, text, eventType, clampConfidence, timestamp, EVENT_TYPES, type AgentContext } from "./base";
+import {
+  runAgent,
+  objectSchema,
+  text,
+  eventType,
+  clampConfidence,
+  timestamp,
+  EVENT_TYPES,
+  type AgentContext,
+} from "./base";
 
 /**
  * Discussion-timeline agent. Turns the conversation into a sequence of notable,
@@ -26,6 +35,20 @@ type Raw = {
   }[];
 };
 
+const schema = objectSchema({
+  events: {
+    type: "array",
+    items: objectSchema({
+      type: { type: "string", enum: EVENT_TYPES },
+      title: { type: "string" },
+      detail: { type: ["string", "null"] },
+      speakerLabel: { type: ["string", "null"] },
+      timestampMs: { type: "number" },
+      confidence: { type: "integer" },
+    }),
+  },
+});
+
 export async function runEventsAgent(ctx: AgentContext): Promise<ExtractedEvent[]> {
   const system = `You are the meeting timeline agent for a general contractor. Break the discussion
 into notable points, each classified as one of: ${EVENT_TYPES.join(", ")}. For each: a short title,
@@ -37,6 +60,7 @@ Return STRICT JSON only: {"events":[{...}]}.`;
     ctx,
     agent: "events",
     system,
+    schema,
     maxTokens: 2500,
     user: `Transcript:\n${ctx.transcript}`,
   });

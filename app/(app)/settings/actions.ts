@@ -1,11 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { users, type Personalization } from "@/lib/db/schema";
-import { requireUser } from "@/lib/auth/server";
-import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { requireUser, setSession } from "@/lib/auth/server";
+import {
+  hashPassword,
+  verifyPassword,
+  passwordPolicyError,
+} from "@/lib/auth/password";
 
 export async function updatePersonalization(formData: FormData) {
   const user = await requireUser();
@@ -44,17 +48,35 @@ export async function changePassword(
   if (!(await verifyPassword(current, user.passwordHash))) {
     return { error: "Current password is incorrect." };
   }
-  if (next.length < 8) {
-    return { error: "New password must be at least 8 characters." };
-  }
+  const policyError = passwordPolicyError(next, user.email);
+  if (policyError) return { error: policyError };
   if (next !== confirm) {
     return { error: "New password and confirmation don't match." };
   }
 
-  await db
+  // Bumping tokenVersion revokes every outstanding session; re-minting the
+  // cookie keeps THIS device signed in with the new version.
+  const [updated] = await db
     .update(users)
-    .set({ passwordHash: await hashPassword(next) })
-    .where(eq(users.id, user.id));
+    .set({
+      passwordHash: await hashPassword(next),
+      tokenVersion: sql`${users.tokenVersion} + 1`,
+    })
+    .where(eq(users.id, user.id))
+    .returning();
+  await setSession(updated);
   revalidatePath("/settings");
   return { success: true };
+}
+
+export async function signOutAllDevicesAction() {
+  const user = await requireUser();
+  const [updated] = await db
+    .update(users)
+    .set({ tokenVersion: sql`${users.tokenVersion} + 1` })
+    .where(eq(users.id, user.id))
+    .returning();
+  // Re-mint this device's cookie so the caller stays signed in.
+  await setSession(updated);
+  revalidatePath("/settings");
 }

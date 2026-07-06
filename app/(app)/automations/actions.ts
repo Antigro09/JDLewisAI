@@ -15,6 +15,21 @@ function parseInterval(v: FormDataEntryValue | null): number {
   return ALLOWED_INTERVALS.includes(n) ? n : 60;
 }
 
+/** One "a@b.com" or "@b.com" entry per line/comma; entries without an "@" are
+ * dropped. Null (= no unattended sends) when nothing valid remains. */
+function parseSendAllowlist(v: FormDataEntryValue | null): string[] | null {
+  const entries = String(v ?? "")
+    .split(/[\n,;]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s.includes("@"));
+  return entries.length ? entries : null;
+}
+
+function parseMaxSends(v: FormDataEntryValue | null): number {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) && n >= 1 && n <= 500 ? n : 10;
+}
+
 async function ownOrThrow(userId: string, id: string) {
   const a = (
     await db.select().from(automations).where(eq(automations.id, id))
@@ -40,6 +55,8 @@ export async function createAutomation(formData: FormData) {
       instructions,
       intervalMinutes,
       allowSend,
+      sendAllowlist: parseSendAllowlist(formData.get("sendAllowlist")),
+      maxSendsPerDay: parseMaxSends(formData.get("maxSendsPerDay")),
       model: String(formData.get("model") ?? "") || null,
       effort: String(formData.get("effort") ?? "") || null,
       status: enabled ? "active" : "paused",
@@ -59,6 +76,8 @@ export async function updateAutomation(id: string, formData: FormData) {
       instructions: String(formData.get("instructions") ?? "").trim(),
       intervalMinutes: parseInterval(formData.get("intervalMinutes")),
       allowSend: formData.get("allowSend") === "on",
+      sendAllowlist: parseSendAllowlist(formData.get("sendAllowlist")),
+      maxSendsPerDay: parseMaxSends(formData.get("maxSendsPerDay")),
       model: String(formData.get("model") ?? "") || null,
       effort: String(formData.get("effort") ?? "") || null,
     })

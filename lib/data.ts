@@ -10,6 +10,7 @@ import {
 } from "@/lib/db/schema";
 import { MODELS, DEFAULT_MODEL, getModel } from "@/lib/claude/models";
 import { buildSystemPrompt } from "@/lib/claude/system";
+import type { SystemPromptParts } from "@/lib/claude/types";
 import { resolveActiveSkills, buildSkillsPrompt } from "@/lib/skills";
 import { listMemories, buildMemoryPrompt } from "@/lib/memory";
 import { buildActivePath, getSiblings } from "@/lib/chat/branches";
@@ -159,12 +160,16 @@ export async function getConversationForUser(userId: string, id: string) {
   return { conv, messages: msgs };
 }
 
-/** Build the system prompt for a conversation (personalization + project + Google). */
+/** Build the system prompt for a conversation (personalization + project +
+ * Google). Returns the cache-friendly stable/volatile pair: everything built
+ * here is stable across a conversation's turns; routes append per-message
+ * notes (mode/web/research/self-check/voice) to `volatile` so toggling them
+ * never busts the cached stable prefix. */
 export async function buildChatSystem(
   user: AppUser,
   conv: Pick<Conversation, "projectId" | "skillIds">,
   googleEnabled: boolean,
-): Promise<string> {
+): Promise<SystemPromptParts> {
   let projectName: string | null = null;
   let projectInstructions: string | null = null;
 
@@ -211,12 +216,15 @@ export async function buildChatSystem(
     }
   }
 
-  return buildSystemPrompt({
-    personalization: user.personalization,
-    projectName,
-    projectInstructions,
-    googleEnabled,
-    skillsPrompt,
-    memoryPrompt,
-  });
+  return {
+    stable: buildSystemPrompt({
+      personalization: user.personalization,
+      projectName,
+      projectInstructions,
+      googleEnabled,
+      skillsPrompt,
+      memoryPrompt,
+    }),
+    volatile: "",
+  };
 }

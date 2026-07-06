@@ -5,15 +5,46 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
-import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import {
+  hashPassword,
+  verifyPassword,
+  passwordPolicyError,
+  MIN_PASSWORD_LENGTH,
+} from "@/lib/auth/password";
 import { setSession, clearSession } from "@/lib/auth/server";
+import {
+  checkRateLimit,
+  resetRateLimit,
+  getClientIp,
+} from "@/lib/rate-limit";
 
 export type AuthState = { error?: string };
 
-const credentials = z.object({
+const signInSchema = z.object({
   email: z.string().email("Enter a valid email"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: z.string().min(1, "Enter your password"),
 });
+
+const signUpSchema = z.object({
+  email: z.string().email("Enter a valid email"),
+  password: z
+    .string()
+    .min(MIN_PASSWORD_LENGTH, `Password must be at least ${MIN_PASSWORD_LENGTH} characters`),
+});
+
+const AUTH_ATTEMPT_LIMIT = { limit: 10, windowSeconds: 15 * 60 };
+// Per-email failures get a larger budget so a third party spraying wrong
+// passwords at someone's address can't cheaply lock them out — and a correct
+// password always succeeds regardless (see signInAction), so it never can.
+const EMAIL_FAILURE_LIMIT = { limit: 50, windowSeconds: 15 * 60 };
+const TOO_MANY_ATTEMPTS = "Too many attempts — try again later.";
+
+/** Per-IP volume brake (increments on every attempt). */
+async function ipRateLimited(scope: string): Promise<boolean> {
+  const ip = await getClientIp();
+  const { allowed } = await checkRateLimit(`${scope}-ip`, ip, AUTH_ATTEMPT_LIMIT);
+  return !allowed;
+}
 
 function safeNext(next: FormDataEntryValue | null): string {
   const n = typeof next === "string" ? next : "/chat";
@@ -24,25 +55,45 @@ export async function signInAction(
   _prev: AuthState,
   formData: FormData,
 ): Promise<AuthState> {
-  const parsed = credentials.safeParse({
+  const parsed = signInSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
   });
   if (!parsed.success) {
     return { error: parsed.error.errors[0]?.message ?? "Invalid input" };
   }
+  const email = parsed.data.email.toLowerCase();
+
+  // Per-IP brake catches a single source hammering many accounts. The per-email
+  // counter tracks FAILURES only and never gates a correct password, so it slows
+  // distributed guessing without letting anyone lock a victim out of their own
+  // account (the classic per-email rate-limit DoS).
+  if (await ipRateLimited("signin")) {
+    return { error: TOO_MANY_ATTEMPTS };
+  }
+  const emailFailures = await checkRateLimit(
+    "signin-email",
+    email,
+    EMAIL_FAILURE_LIMIT,
+    { peek: true },
+  );
 
   let ok = false;
   try {
-    const rows = await db
-      .select()
-      .from(users)
-      .where(eq(users.email, parsed.data.email.toLowerCase()));
+    const rows = await db.select().from(users).where(eq(users.email, email));
     const user = rows[0];
-    if (!user || user.disabled) return { error: "Invalid email or password" };
-    if (!(await verifyPassword(parsed.data.password, user.passwordHash))) {
+    const valid =
+      user &&
+      !user.disabled &&
+      (await verifyPassword(parsed.data.password, user.passwordHash));
+    if (!valid) {
+      // Count the failure; a flood of wrong guesses eventually trips the brake,
+      // but the real owner's correct password below is never blocked.
+      await checkRateLimit("signin-email", email, EMAIL_FAILURE_LIMIT);
+      if (!emailFailures.allowed) return { error: TOO_MANY_ATTEMPTS };
       return { error: "Invalid email or password" };
     }
+    await resetRateLimit("signin-email", email);
     await setSession(user);
     ok = true;
   } catch {
@@ -57,7 +108,7 @@ export async function signUpAction(
   formData: FormData,
 ): Promise<AuthState> {
   const name = String(formData.get("name") ?? "").trim();
-  const parsed = credentials.safeParse({
+  const parsed = signUpSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
   });
@@ -66,6 +117,13 @@ export async function signUpAction(
     return { error: parsed.error.errors[0]?.message ?? "Invalid input" };
   }
   const email = parsed.data.email.toLowerCase();
+
+  const policyError = passwordPolicyError(parsed.data.password, email);
+  if (policyError) return { error: policyError };
+
+  if (await ipRateLimited("signup")) {
+    return { error: TOO_MANY_ATTEMPTS };
+  }
 
   const allowedDomain = process.env.ALLOWED_SIGNUP_DOMAIN?.trim();
   if (allowedDomain && !email.endsWith(`@${allowedDomain}`)) {

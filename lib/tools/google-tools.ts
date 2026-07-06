@@ -1,3 +1,8 @@
+import { and, eq, sql } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { automations } from "@/lib/db/schema";
+import { recordAudit } from "@/lib/audit";
+import { createNotification } from "@/lib/notifications";
 import { getValidAccessToken, GoogleNotConnectedError } from "@/lib/google/client";
 import { driveSearch, driveReadFile } from "@/lib/google/drive";
 import { docsCreate, docsAppendText, docsReplaceText } from "@/lib/google/docs";
@@ -10,6 +15,20 @@ import {
 } from "@/lib/google/gmail";
 
 export type GoogleToolKind = "read" | "write";
+
+/** Execution context threaded from the caller (lib/automations/run.ts →
+ * runAgentTurn → here). Unattended runs carry the automation's send
+ * guardrails, which are enforced in code — no prompt can override them. */
+export type ToolExecutionContext = {
+  /** True when no human is in the loop (automation runs). */
+  unattended: boolean;
+  automation?: {
+    id: string;
+    /** "a@b.com" (exact) or "@b.com" (domain); null/empty = no unattended sends. */
+    sendAllowlist: string[] | null;
+    maxSendsPerDay: number;
+  };
+};
 
 export type GoogleToolResult = {
   output: string; // model-facing (usually JSON)
@@ -394,19 +413,155 @@ export function googleToolDefinitions() {
   return GOOGLE_TOOLS.map((t) => t.definition);
 }
 
+/** "Name <a@b.com>" | "a@b.com" → normalized address, or null if unparseable. */
+function extractEmail(raw: string): string | null {
+  const angled = raw.match(/<([^<>]+)>/);
+  const candidate = (angled ? angled[1] : raw).trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate) ? candidate : null;
+}
+
+function splitRecipients(v: unknown): string[] {
+  return typeof v === "string"
+    ? v.split(/[,;]+/).map((s) => s.trim()).filter(Boolean)
+    : [];
+}
+
+/** Allowlist entries: "a@b.com" matches exactly; "@b.com" matches the domain. */
+function recipientAllowed(email: string, allowlist: string[]): boolean {
+  return allowlist.some((entry) => {
+    const e = entry.trim().toLowerCase();
+    if (!e.includes("@")) return false;
+    return e.startsWith("@") ? email.endsWith(e) : email === e;
+  });
+}
+
+const rejectSend = (reason: string): GoogleToolResult => ({
+  output: `gmail_send blocked: ${reason}`,
+  summary: "Unattended send blocked",
+  isError: true,
+});
+
+/**
+ * Hard guardrails for unattended gmail_send, enforced in code before any API
+ * call: EVERY recipient (to/cc/bcc) must match the automation's allowlist, and
+ * the per-UTC-day counter must be under maxSendsPerDay. Returns an is_error
+ * tool result to hand back to the model, or null to proceed.
+ */
+async function gateUnattendedSend(
+  userId: string,
+  ctx: ToolExecutionContext,
+  input: Input,
+): Promise<GoogleToolResult | null> {
+  const auto = ctx.automation;
+  if (!auto) {
+    return rejectSend(
+      "unattended sending is not permitted in this context. Create a Gmail draft instead.",
+    );
+  }
+  const allowlist = (auto.sendAllowlist ?? []).filter((e) => e.trim());
+  if (allowlist.length === 0) {
+    // An allowSend automation with no allowlist can't send now (fail-closed).
+    // Tell the owner once so a previously-working send isn't lost silently —
+    // they may have upgraded past the change that made an allowlist required.
+    try {
+      await createNotification({
+        userId,
+        kind: "error",
+        title: "Automation email blocked",
+        body: "An automation tried to send email but has no recipient allowlist. Add allowed recipients in Automations to enable unattended sending.",
+        link: "/automations",
+      });
+    } catch {
+      // Non-fatal; the block itself still stands.
+    }
+    return rejectSend(
+      "this automation has no recipient allowlist, so unattended sending is disabled. Create a Gmail draft instead.",
+    );
+  }
+  const recipients = [
+    ...splitRecipients(input.to),
+    ...splitRecipients(input.cc),
+    ...splitRecipients(input.bcc),
+  ];
+  if (recipients.length === 0) return rejectSend("no recipients given.");
+  for (const raw of recipients) {
+    const email = extractEmail(raw);
+    if (!email || !recipientAllowed(email, allowlist)) {
+      return rejectSend(
+        `recipient "${raw}" is not on this automation's allowlist. Create a Gmail draft instead.`,
+      );
+    }
+  }
+  // Reserve a slot in the per-UTC-day counter atomically (UPDATE … WHERE) so
+  // concurrent runs can't exceed the cap. Reserving before the API call means
+  // a failed send still consumes a slot — the conservative direction.
+  const today = new Date().toISOString().slice(0, 10);
+  const reserved = await db
+    .update(automations)
+    .set({
+      sendsToday: sql`CASE WHEN ${automations.sendsTodayDate} = ${today} THEN ${automations.sendsToday} + 1 ELSE 1 END`,
+      sendsTodayDate: today,
+    })
+    .where(
+      and(
+        eq(automations.id, auto.id),
+        sql`((${automations.sendsTodayDate} IS DISTINCT FROM ${today} AND ${automations.maxSendsPerDay} >= 1) OR (${automations.sendsTodayDate} = ${today} AND ${automations.sendsToday} < ${automations.maxSendsPerDay}))`,
+      ),
+    )
+    .returning({ id: automations.id });
+  if (reserved.length === 0) {
+    return rejectSend(
+      `this automation's daily send limit (${auto.maxSendsPerDay}/day) is reached. Create a Gmail draft instead.`,
+    );
+  }
+  return null;
+}
+
+/** Every unattended send that goes through leaves an audit entry and an in-app
+ * notification, so the owner always learns email went out on their behalf. */
+async function auditUnattendedSend(
+  userId: string,
+  automationId: string,
+  input: Input,
+): Promise<void> {
+  const detail = `Automation ${automationId} sent email to ${str(input.to)} — "${str(input.subject)}"`;
+  await recordAudit({ userId, action: "automation.gmail_send", detail });
+  try {
+    await createNotification({
+      userId,
+      kind: "task_complete",
+      title: "Automation sent an email",
+      body: `To: ${str(input.to)} — "${str(input.subject)}"`,
+      link: "/automations",
+    });
+  } catch {
+    // The email is already out — a failed notification must not surface as a
+    // send failure (the model could retry and send again).
+  }
+}
+
 /** Execute a tool by name, resolving the user's access token. Never throws. */
 export async function runGoogleTool(
   userId: string,
   name: string,
   input: Input,
+  ctx?: ToolExecutionContext,
 ): Promise<GoogleToolResult> {
   const tool = getGoogleTool(name);
   if (!tool) {
     return { output: `Unknown tool: ${name}`, summary: "Unknown tool", isError: true };
   }
   try {
+    if (name === "gmail_send" && ctx?.unattended) {
+      const blocked = await gateUnattendedSend(userId, ctx, input);
+      if (blocked) return blocked;
+    }
     const token = await getValidAccessToken(userId);
-    return await tool.exec(token, input);
+    const result = await tool.exec(token, input);
+    if (name === "gmail_send" && ctx?.unattended && !result.isError) {
+      await auditUnattendedSend(userId, ctx.automation!.id, input);
+    }
+    return result;
   } catch (err) {
     if (err instanceof GoogleNotConnectedError) {
       return {

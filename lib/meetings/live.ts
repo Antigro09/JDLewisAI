@@ -18,8 +18,8 @@ import { runClassifierAgent } from "@/lib/meetings/agents/classifier";
 import { transcriptText } from "@/lib/meetings/access";
 import { createNotification } from "@/lib/notifications";
 import type { AgentContext } from "@/lib/meetings/agents/base";
+import { LIVE_MEETING_MODEL } from "@/lib/claude/models";
 
-const LIVE_MODEL = "claude-haiku-4-5-20251001";
 const TICK_EVERY_FINALS = 6;
 const TICK_MIN_INTERVAL_MS = 15_000;
 // A wedged classifier call must never disable live ticks forever: the tick is
@@ -49,6 +49,15 @@ type LiveMeetingSession = {
   stopping: boolean;
 };
 
+/**
+ * SINGLE-INSTANCE STATE: live-meeting sessions (provider sockets, write
+ * chains, sequence counters, tick timers) live in these in-process Maps.
+ * That is correct for the current deployment — one persistent Node process
+ * on EC2 — but it assumes exactly ONE app instance: with horizontal scaling,
+ * audio chunks or stop requests routed to a different instance would not
+ * find the session. Scaling out requires a shared session store (e.g. Redis)
+ * plus sticky routing for the audio stream — documented as a future item.
+ */
 declare global {
   // eslint-disable-next-line no-var
   var __liveMeetingSessions: Map<string, LiveMeetingSession> | undefined;
@@ -215,7 +224,7 @@ async function runLiveTick(meetingId: string) {
       linkedProjectName: null,
       knownProjects: "None",
       transcript,
-      liveModel: LIVE_MODEL,
+      liveModel: LIVE_MEETING_MODEL,
     };
     const c = await runClassifierAgent(ctx);
 

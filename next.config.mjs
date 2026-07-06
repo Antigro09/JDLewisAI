@@ -1,3 +1,37 @@
+// All client-side traffic is same-origin (the AssemblyAI websocket and every
+// third-party API run server-side), so connect-src stays 'self'.
+// 'unsafe-inline'/'unsafe-eval' in script-src are required by Next.js's
+// inline bootstrap scripts until a nonce-based CSP is wired up.
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "media-src 'self' blob:",
+  "connect-src 'self'",
+  "font-src 'self' data:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+const securityHeaders = [
+  {
+    key: "Strict-Transport-Security",
+    value: "max-age=63072000; includeSubDomains",
+  },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  {
+    // Dictation and photo capture use getUserMedia, so camera/microphone
+    // must stay allowed for our own origin.
+    key: "Permissions-Policy",
+    value: "camera=(self), microphone=(self), geolocation=(self)",
+  },
+  { key: "Content-Security-Policy", value: contentSecurityPolicy },
+];
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
@@ -9,6 +43,9 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: "12mb",
     },
+  },
+  async headers() {
+    return [{ source: "/(.*)", headers: securityHeaders }];
   },
 };
 

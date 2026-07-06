@@ -23,9 +23,12 @@ const REUSE_WINDOW_MS = 6 * 60 * 60 * 1000;
 type Body = { detectedApp?: string; detectionConfidence?: number };
 
 /**
- * Auto-start a meeting on desktop detection. Recording consent is covered by the
- * employee agreement, so this starts immediately (no confirmation prompt) and
- * notifies the user that recording began.
+ * Auto-start a meeting on desktop detection. Recording consent is normally
+ * covered by the employee agreement, so this starts immediately (no
+ * confirmation prompt) and notifies the user that recording began. When the
+ * company policy requires explicit consent, the session is created WITHOUT
+ * consent and the live workspace collects the acknowledgement before any
+ * capture starts (stream/start enforces it server-side).
  */
 export async function POST(req: Request) {
   const user = await getCurrentUser();
@@ -40,6 +43,7 @@ export async function POST(req: Request) {
   const detectedApp = (body.detectedApp ?? "").trim() || "Detected meeting";
   const confidence = Math.max(0, Math.min(100, Math.round(body.detectionConfidence ?? 0)));
   const company = await ensureCompanyForUser(user);
+  const consentRequired = company.recordingConsentRequired;
 
   // Opportunistic janitor pass: clears zombie live meetings (server restarts,
   // crashed clients) so they can't be reused below and can't block the
@@ -83,8 +87,9 @@ export async function POST(req: Request) {
       status: "active",
       detectedApp,
       detectionConfidence: confidence,
-      // Consent is established by the employee agreement.
-      consentConfirmed: true,
+      // Consent is established by the employee agreement, unless the company
+      // policy requires an explicit per-meeting acknowledgement.
+      consentConfirmed: !consentRequired,
       autoStartApproved: true,
     })
     .onConflictDoNothing()
@@ -121,8 +126,10 @@ export async function POST(req: Request) {
   await createNotification({
     userId: user.id,
     kind: "task_complete",
-    title: "Meeting recording started",
-    body: `Auto-started Meeting Intelligence for a ${detectedApp} call.`,
+    title: consentRequired ? "Meeting detected" : "Meeting recording started",
+    body: consentRequired
+      ? `Detected a ${detectedApp} call — acknowledge the recording notice in the live workspace to start capture.`
+      : `Auto-started Meeting Intelligence for a ${detectedApp} call.`,
     link: `/meetings/${meeting.id}`,
   });
   await recordAudit({

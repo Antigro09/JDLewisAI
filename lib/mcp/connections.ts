@@ -11,7 +11,14 @@ export type ResolvedMcp = {
     name: string;
     authorization_token?: string;
   }[];
-  toolsets: { type: "mcp_toolset"; mcp_server_name: string }[];
+  // Allowlist mode mirrors BetaMCPToolset: default-off + per-tool enable,
+  // with `configs` keyed by tool name.
+  toolsets: {
+    type: "mcp_toolset";
+    mcp_server_name: string;
+    default_config?: { enabled: boolean };
+    configs?: Record<string, { enabled: boolean }>;
+  }[];
 };
 
 export async function listMcpConnections(
@@ -80,15 +87,35 @@ export async function setMcpConnectionEnabled(
     .where(and(eq(mcpConnections.id, id), eq(mcpConnections.userId, userId)));
 }
 
+/** Per-connection write policy + explicit tool allowlist (null = all tools). */
+export async function setMcpToolPolicy(
+  userId: string,
+  id: string,
+  opts: { allowWrites: boolean; allowedTools: string[] | null },
+): Promise<void> {
+  await db
+    .update(mcpConnections)
+    .set({ allowWrites: opts.allowWrites, allowedTools: opts.allowedTools })
+    .where(and(eq(mcpConnections.id, id), eq(mcpConnections.userId, userId)));
+}
+
 /**
  * Enabled connections shaped for a Messages API request. Tokens are decrypted
  * here (server-side only). Returns empty arrays when nothing is connected, so
  * callers can cheaply skip the MCP beta path.
+ *
+ * MCP tools execute server-side (Anthropic connects to the server), so gating
+ * means restricting what each request exposes: a connection with an explicit
+ * allowedTools list gets an allowlist toolset (everything else disabled), and
+ * unattended contexts only ever see connections marked allowWrites — no human
+ * is available there to confirm anything.
  */
 export async function resolveActiveMcpServers(
   userId: string,
+  opts?: { unattended?: boolean },
 ): Promise<ResolvedMcp> {
-  const rows = (await listMcpConnections(userId)).filter((r) => r.enabled);
+  let rows = (await listMcpConnections(userId)).filter((r) => r.enabled);
+  if (opts?.unattended) rows = rows.filter((r) => r.allowWrites);
   const servers = rows.map((r) => ({
     type: "url" as const,
     url: r.url,
@@ -97,9 +124,17 @@ export async function resolveActiveMcpServers(
       ? { authorization_token: decryptSecret(r.authTokenEnc) }
       : {}),
   }));
-  const toolsets = rows.map((r) => ({
-    type: "mcp_toolset" as const,
-    mcp_server_name: r.name,
-  }));
+  const toolsets = rows.map((r) => {
+    const allowed = (r.allowedTools ?? []).map((t) => t.trim()).filter(Boolean);
+    if (allowed.length === 0) {
+      return { type: "mcp_toolset" as const, mcp_server_name: r.name };
+    }
+    return {
+      type: "mcp_toolset" as const,
+      mcp_server_name: r.name,
+      default_config: { enabled: false },
+      configs: Object.fromEntries(allowed.map((t) => [t, { enabled: true }])),
+    };
+  });
   return { servers, toolsets };
 }

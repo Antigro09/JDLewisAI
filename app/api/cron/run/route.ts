@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
-import { and, eq, lte, or, isNull } from "drizzle-orm";
+import { and, eq, lte, or, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { automations } from "@/lib/db/schema";
+import { automations, rateLimits } from "@/lib/db/schema";
+import { authorizeCronRequest } from "@/lib/auth/cron";
 import { runAutomation } from "@/lib/automations/run";
 
 export const runtime = "nodejs";
@@ -9,11 +10,14 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 async function handle(req: Request) {
-  const secret = process.env.CRON_SECRET;
-  const auth = req.headers.get("authorization");
-  if (!secret || auth !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const denied = await authorizeCronRequest(req);
+  if (denied) return denied;
+
+  // Sweep rate-limit counters whose window is long over (largest window in
+  // use is 1 h; a day of slack keeps the table tiny without racing anything).
+  await db
+    .delete(rateLimits)
+    .where(lte(rateLimits.windowStartAt, sql`now() - interval '1 day'`));
 
   const now = new Date();
   const due = await db

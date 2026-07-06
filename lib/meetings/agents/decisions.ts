@@ -1,4 +1,11 @@
-import { runAgent, text, clampConfidence, timestamp, type AgentContext } from "./base";
+import {
+  runAgent,
+  objectSchema,
+  text,
+  clampConfidence,
+  timestamp,
+  type AgentContext,
+} from "./base";
 
 /**
  * Decision agent (spec §10). Captures agreements reached by the team, with the
@@ -24,6 +31,20 @@ type Raw = {
   }[];
 };
 
+const schema = objectSchema({
+  decisions: {
+    type: "array",
+    items: objectSchema({
+      decision: { type: "string" },
+      reason: { type: ["string", "null"] },
+      supportingDiscussion: { type: ["string", "null"] },
+      approvedBy: { type: ["string", "null"] },
+      timestampMs: { type: "number" },
+      confidence: { type: "integer" },
+    }),
+  },
+});
+
 export async function runDecisionAgent(ctx: AgentContext): Promise<ExtractedDecision[]> {
   const system = `You are the Decision agent for a general contractor. Whenever the team reaches an
 agreement or makes a call, record it: decision, reason, supportingDiscussion (a short quote/paraphrase
@@ -35,6 +56,7 @@ Return STRICT JSON only: {"decisions":[{...}]}.`;
     ctx,
     agent: "decisions",
     system,
+    schema,
     maxTokens: 2000,
     user: `Transcript:\n${ctx.transcript}`,
   });

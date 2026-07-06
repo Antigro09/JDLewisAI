@@ -1,4 +1,4 @@
-import { runAgent, text, clampConfidence, type AgentContext } from "./base";
+import { runAgent, objectSchema, text, clampConfidence, type AgentContext } from "./base";
 
 /**
  * Project Detection agent (spec §8). Detects the project named in the meeting
@@ -35,6 +35,21 @@ type Raw = {
 const list = (v: unknown) =>
   Array.isArray(v) ? v.map((x) => text(x)).filter(Boolean).slice(0, 25) : [];
 
+const stringList = { type: "array", items: { type: "string" } };
+
+const schema = objectSchema({
+  matchedProjectId: { type: ["string", "null"] },
+  projectName: { type: "string" },
+  building: { type: "string" },
+  floor: { type: "string" },
+  area: { type: "string" },
+  trades: stringList,
+  contractors: stringList,
+  equipment: stringList,
+  materials: stringList,
+  confidence: { type: "integer" },
+});
+
 export async function runProjectDetectionAgent(
   ctx: AgentContext,
 ): Promise<ProjectDetectionResult> {
@@ -52,6 +67,7 @@ Return STRICT JSON only:
     ctx,
     agent: "project",
     system,
+    schema,
     maxTokens: 900,
     user: `Known projects (name (id)):\n${ctx.knownProjects}\n\nCurrently linked project: ${
       ctx.linkedProjectName ?? "none"
