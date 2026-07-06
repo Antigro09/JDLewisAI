@@ -1,0 +1,59 @@
+name: Render promo video v3
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/contractorai-promo-video-a56a2o
+    paths:
+      - ".github/workflows/render-promo.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+      - name: Download source clips and voiceover
+        run: |
+          curl -fsSL -o halfA.mp4 "https://d8j0ntlcm91z4.cloudfront.net/user_3G6RqDndVG2Mizpxv0qQWhGyAIN/hf_20260706_052943_8ff4f293-be4e-4a91-af93-44b655112512.mp4"
+          curl -fsSL -o halfB.mp4 "https://d8j0ntlcm91z4.cloudfront.net/user_3G6RqDndVG2Mizpxv0qQWhGyAIN/hf_20260706_052951_87c0171b-69aa-4501-8749-d8d6ab11e3da.mp4"
+          curl -fsSL -o voA.wav "https://d8j0ntlcm91z4.cloudfront.net/user_3G6RqDndVG2Mizpxv0qQWhGyAIN/hf_20260706_054101_08e47c6c-621d-4726-83de-7b13e0e3b096.wav"
+          curl -fsSL -o voB.wav "https://d8j0ntlcm91z4.cloudfront.net/user_3G6RqDndVG2Mizpxv0qQWhGyAIN/hf_20260706_053749_57bc6e2e-717c-4ca5-8633-e701dfe02b2a.wav"
+          for f in halfA.mp4 halfB.mp4 voA.wav voB.wav; do echo "$f:"; ffprobe -v error -show_entries format=duration -of default=nw=1 "$f"; done
+
+      - name: Render final cut (crossfade join, native-speed VO)
+        run: |
+          mkdir -p docs/assets
+          ffmpeg -y \
+            -i halfA.mp4 -i halfB.mp4 -i voA.wav -i voB.wav \
+            -filter_complex "\
+              [0:v]fps=30[v0]; \
+              [1:v]fps=30[v1]; \
+              [v0][v1]xfade=transition=fade:duration=0.5:offset=14.5,format=yuv420p[v]; \
+              [0:a]aresample=48000,aformat=channel_layouts=stereo[m0]; \
+              [1:a]aresample=48000,aformat=channel_layouts=stereo[m1]; \
+              [m0][m1]acrossfade=d=0.5:c1=tri:c2=tri,volume=0.35[music]; \
+              [2:a]aresample=48000,aformat=channel_layouts=stereo,adelay=250|250[voa]; \
+              [3:a]aresample=48000,aformat=channel_layouts=stereo,adelay=15300|15300[vob]; \
+              [voa][vob]amix=inputs=2:duration=longest:normalize=0[vo]; \
+              [music][vo]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]" \
+            -map "[v]" -map "[a]" \
+            -c:v libx264 -preset slow -crf 18 -c:a aac -b:a 192k \
+            -t 29.5 -movflags +faststart \
+            docs/assets/contractorai-promo-v3.mp4
+          ffprobe -v error -show_entries format=duration -of default=nw=1 docs/assets/contractorai-promo-v3.mp4
+
+      - name: Commit rendered video
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/assets/contractorai-promo-v3.mp4
+          git commit -m "Add rendered promo video v3 (crossfade join, 29.5s)"
+          git push
