@@ -5,7 +5,8 @@
  * types we can't sniff (text, docx, heic, ...) pass through on size alone.
  */
 
-// Matches the serverActions bodySizeLimit in next.config.mjs.
+// Default per-file ceiling for general uploads. Must stay under the
+// serverActions bodySizeLimit in next.config.mjs (44mb).
 export const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;
 
 function startsWith(buf: Buffer, magic: number[]): boolean {

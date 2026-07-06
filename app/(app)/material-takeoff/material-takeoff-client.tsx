@@ -99,8 +99,8 @@ export function MaterialTakeoffClient({
                 className="mt-1 block w-full text-sm text-neutral-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100 dark:text-neutral-300 dark:file:bg-brand-950 dark:file:text-brand-300"
               />
               <p className="mt-1 text-xs text-neutral-400">
-                Up to 5 files, 10 MB total. Sheets without a printed scale still work from
-                dimension strings and schedules.
+                Up to 5 files, 40 MB total (23 MB per document). Sheets without a printed
+                scale still work from dimension strings and schedules.
               </p>
             </div>
 

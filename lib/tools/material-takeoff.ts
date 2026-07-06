@@ -891,8 +891,9 @@ export type TakeoffFile = {
   fileName: string;
 };
 
-// Claude document blocks accept requests up to 32MB; leave headroom.
-const MAX_FILE_BYTES = 28 * 1024 * 1024;
+// Claude API requests are capped at 32MB and each document is sent base64
+// encoded (×4/3), so raw bytes must stay under ~24MB; leave prompt headroom.
+const MAX_FILE_BYTES = 23 * 1024 * 1024;
 const ALLOWED_MIMES = new Set([
   "application/pdf",
   "image/png",

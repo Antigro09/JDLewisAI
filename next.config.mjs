@@ -40,9 +40,14 @@ const nextConfig = {
   },
   experimental: {
     // Allow larger request bodies for file uploads handled in route handlers.
+    // Sized for the material-takeoff action (40 MB total) plus multipart overhead.
     serverActions: {
-      bodySizeLimit: "12mb",
+      bodySizeLimit: "44mb",
     },
+    // middleware.ts buffers request bodies with its own 10MB default cap —
+    // exceeding it truncates the body ("Unexpected end of form"). Keep in
+    // sync with bodySizeLimit above.
+    middlewareClientMaxBodySize: "44mb",
   },
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];

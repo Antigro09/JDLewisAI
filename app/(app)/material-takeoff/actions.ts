@@ -18,9 +18,9 @@ export type PlanTakeoffState = {
   sheetLink?: string;
 };
 
-// Server actions accept 12mb bodies (next.config.mjs); leave headroom for
+// Server actions accept 44mb bodies (next.config.mjs); leave headroom for
 // multipart overhead.
-const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 40 * 1024 * 1024;
 const MAX_FILES = 5;
 const ALLOWED_MIMES = new Set([
   "application/pdf",
@@ -46,7 +46,7 @@ export async function runPlanTakeoffAction(
   }
   const totalBytes = uploads.reduce((sum, f) => sum + f.size, 0);
   if (totalBytes > MAX_TOTAL_BYTES) {
-    return { error: "Uploads exceed the 10 MB total limit — split into smaller runs." };
+    return { error: "Uploads exceed the 40 MB total limit — split into smaller runs." };
   }
   const bad = uploads.find((f) => !ALLOWED_MIMES.has(f.type));
   if (bad) {
