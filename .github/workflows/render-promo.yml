@@ -26,7 +26,7 @@ jobs:
           curl -fsSL -o halfB.mp4 "https://d8j0ntlcm91z4.cloudfront.net/user_3G6RqDndVG2Mizpxv0qQWhGyAIN/hf_20260706_052951_87c0171b-69aa-4501-8749-d8d6ab11e3da.mp4"
           curl -fsSL -o voA.wav "https://d8j0ntlcm91z4.cloudfront.net/user_3G6RqDndVG2Mizpxv0qQWhGyAIN/hf_20260706_054101_08e47c6c-621d-4726-83de-7b13e0e3b096.wav"
           curl -fsSL -o voB.wav "https://d8j0ntlcm91z4.cloudfront.net/user_3G6RqDndVG2Mizpxv0qQWhGyAIN/hf_20260706_053749_57bc6e2e-717c-4ca5-8633-e701dfe02b2a.wav"
-          ffprobe -v error -show_entries format=duration -of default=nw=1 halfA.mp4 halfB.mp4 voA.wav voB.wav
+          for f in halfA.mp4 halfB.mp4 voA.wav voB.wav; do echo "$f:"; ffprobe -v error -show_entries format=duration -of default=nw=1 "$f"; done
 
       - name: Render final cut (crossfade join, native-speed VO)
         run: |
