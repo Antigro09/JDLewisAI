@@ -100,16 +100,24 @@ export async function gmailReadMessage(
   };
 }
 
+/** Strip CR/LF (and other control chars) from a value going into a MIME header.
+ * Without this, a newline in `subject`/`to`/`cc` injects arbitrary headers
+ * (e.g. a `Bcc:`), which would smuggle a recipient past the send allowlist. */
+function headerValue(v: string): string {
+  return v.replace(/[\r\n\t\f\v]+/g, " ").trim();
+}
+
 function buildRaw(opts: {
   to: string;
   subject: string;
   body: string;
   cc?: string;
 }): string {
+  const cc = opts.cc ? headerValue(opts.cc) : "";
   const lines = [
-    `To: ${opts.to}`,
-    opts.cc ? `Cc: ${opts.cc}` : "",
-    `Subject: ${opts.subject}`,
+    `To: ${headerValue(opts.to)}`,
+    cc ? `Cc: ${cc}` : "",
+    `Subject: ${headerValue(opts.subject)}`,
     "Content-Type: text/plain; charset=UTF-8",
     "",
     opts.body,

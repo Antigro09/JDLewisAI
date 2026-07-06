@@ -66,7 +66,11 @@ export async function POST(req: Request) {
       source: body.source ?? "manual",
       detectedApp: body.detectedApp || null,
       detectionConfidence: Math.max(0, Math.min(100, Math.round(body.detectionConfidence ?? 0))),
-      consentConfirmed: Boolean(body.consentConfirmed),
+      // A company consent policy overrides the caller's blanket assertion —
+      // the acknowledgement is collected in the live workspace instead.
+      consentConfirmed: company.recordingConsentRequired
+        ? false
+        : Boolean(body.consentConfirmed),
       autoStartApproved: Boolean(body.autoStartApproved),
       rawAudioEnabled: Boolean(body.rawAudioEnabled),
     })

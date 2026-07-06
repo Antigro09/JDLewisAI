@@ -6,6 +6,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { googleAccounts, skills, skillFiles } from "@/lib/db/schema";
 import { requireUser, requireAdmin } from "@/lib/auth/server";
+import { readUploadOrThrow } from "@/lib/uploads";
 import { PLUGINS, setUserPlugin } from "@/lib/plugins";
 import { parseSkillMd } from "@/lib/skills/parse-skill-md";
 import { createAnthropicSkill, type UploadableFile } from "@/lib/skills/anthropic-skill";
@@ -13,6 +14,7 @@ import {
   addMcpConnection,
   removeMcpConnection,
   setMcpConnectionEnabled,
+  setMcpToolPolicy,
   uniqueMcpName,
 } from "@/lib/mcp/connections";
 import { getCatalogEntry } from "@/lib/mcp/catalog";
@@ -71,6 +73,21 @@ export async function toggleMcpServer(formData: FormData) {
   revalidatePath("/customize");
 }
 
+export async function updateMcpToolPolicy(formData: FormData) {
+  const user = await requireUser();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const allowedTools = String(formData.get("allowedTools") ?? "")
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  await setMcpToolPolicy(user.id, id, {
+    allowWrites: formData.get("allowWrites") === "on",
+    allowedTools: allowedTools.length ? allowedTools : null,
+  });
+  revalidatePath("/customize");
+}
+
 const MAX_REFERENCE_BYTES = 5 * 1024 * 1024;
 
 export type SkillUploadState = { error?: string };
@@ -106,14 +123,24 @@ export async function createSkillFromMarkdown(
   const referenceFiles = formData
     .getAll("referenceFiles")
     .filter((f): f is File => f instanceof File && f.size > 0);
+  const refBuffers: UploadableFile[] = [];
   for (const f of referenceFiles) {
-    if (f.size > MAX_REFERENCE_BYTES) {
-      return { error: `"${f.name}" exceeds 5 MB.` };
+    try {
+      // Enforces the size ceiling and magic-byte/MIME consistency.
+      const bytes = await readUploadOrThrow(f, { maxBytes: MAX_REFERENCE_BYTES });
+      refBuffers.push({
+        name: f.name,
+        mime: f.type || "application/octet-stream",
+        bytes,
+      });
+    } catch (err) {
+      return {
+        error: `"${f.name}": ${err instanceof Error ? err.message : "invalid file"}`,
+      };
     }
   }
 
   let skillId: string;
-  const refBuffers: UploadableFile[] = [];
   try {
     const inserted = await db
       .insert(skills)
@@ -136,18 +163,12 @@ export async function createSkillFromMarkdown(
       kind: "primary",
     });
 
-    for (const f of referenceFiles) {
-      const bytes = Buffer.from(await f.arrayBuffer());
-      refBuffers.push({
-        name: f.name,
-        mime: f.type || "application/octet-stream",
-        bytes,
-      });
+    for (const ref of refBuffers) {
       await db.insert(skillFiles).values({
         skillId,
-        name: f.name,
-        mime: f.type || "application/octet-stream",
-        data: bytes.toString("base64"),
+        name: ref.name,
+        mime: ref.mime,
+        data: ref.bytes.toString("base64"),
         kind: "reference",
       });
     }

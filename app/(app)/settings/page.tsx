@@ -5,7 +5,8 @@ import { Button, Card, Input, Label, Select, Textarea } from "@/components/ui";
 import { MODELS, ALL_EFFORTS } from "@/lib/claude/models";
 import { Tabs } from "@/components/tabs";
 import { ChangePasswordForm } from "@/components/settings/change-password-form";
-import { updatePersonalization } from "./actions";
+import { SubmitButton } from "@/components/submit-button";
+import { updatePersonalization, signOutAllDevicesAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -184,6 +185,21 @@ export default async function SettingsPage({
               Change password
             </h2>
             <ChangePasswordForm />
+          </Card>
+
+          <Card className="max-w-2xl p-6">
+            <h2 className="mb-1 font-semibold text-neutral-900 dark:text-neutral-100">
+              Sessions
+            </h2>
+            <p className="mb-3 text-sm text-neutral-500 dark:text-neutral-400">
+              Signs you out everywhere else — other browsers, phones, and
+              tablets. This device stays signed in.
+            </p>
+            <form action={signOutAllDevicesAction}>
+              <SubmitButton size="sm" variant="secondary" pendingText="Signing out…">
+                Sign out all devices
+              </SubmitButton>
+            </form>
           </Card>
         </div>
       )}

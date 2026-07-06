@@ -1,4 +1,5 @@
-import { generate, extractJson } from "@/lib/claude/chat";
+import { generate, generateStructured, extractJson } from "@/lib/claude/chat";
+import { MEETING_MODEL } from "@/lib/claude/models";
 import { recordUsage } from "@/lib/usage";
 import type {
   MeetingEventType,
@@ -57,6 +58,21 @@ export const riskType = (v: unknown): MeetingRiskType =>
 export const priority = (v: unknown): MeetingPriority =>
   PRIORITIES.includes(v as MeetingPriority) ? (v as MeetingPriority) : "medium";
 
+/**
+ * Build a structured-outputs object schema: `additionalProperties: false` is
+ * mandatory for the API's json_schema format, and every property is listed as
+ * required so the model always emits the full shape (the coercion helpers
+ * above tolerate empty/null values, so this stays permissive in practice).
+ */
+export const objectSchema = (
+  properties: Record<string, unknown>,
+): Record<string, unknown> => ({
+  type: "object",
+  properties,
+  required: Object.keys(properties),
+  additionalProperties: false,
+});
+
 /** Context every agent receives about the meeting under analysis. */
 export type AgentContext = {
   userId: string;
@@ -76,6 +92,11 @@ export type AgentContext = {
 /**
  * Run one agent: a single Claude call with a strict-JSON contract, usage
  * metered under a per-agent feature tag so cost is attributable per agent.
+ * When a `schema` is provided the call goes through structured outputs
+ * (generateStructured constrains decoding to the schema and falls back to
+ * plain generation + extraction on any API rejection); without one it uses
+ * the legacy prompt-only JSON path. Either way the per-agent coercion
+ * helpers remain the safety net over the parsed result.
  */
 export async function runAgent<T>(opts: {
   ctx: AgentContext;
@@ -85,13 +106,42 @@ export async function runAgent<T>(opts: {
   model?: string;
   effort?: string;
   maxTokens?: number;
+  /** JSON schema for the agent's output contract (see objectSchema). */
+  schema?: Record<string, unknown>;
 }): Promise<T | null> {
+  const model = opts.model ?? MEETING_MODEL;
+  const effort = opts.effort ?? "medium";
+  const maxTokens = opts.maxTokens ?? 3000;
+  const turns = [{ role: "user" as const, text: opts.user }];
+
+  if (opts.schema) {
+    const result = await generateStructured<T>({
+      model,
+      effort,
+      system: opts.system,
+      maxTokens,
+      turns,
+      schema: opts.schema,
+      schemaName: opts.agent,
+    });
+    await recordUsage({
+      userId: opts.ctx.userId,
+      model: result.model,
+      feature: `meeting.${opts.agent}`,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      cacheCreationInputTokens: result.cacheCreationInputTokens,
+      cacheReadInputTokens: result.cacheReadInputTokens,
+    });
+    return result.data;
+  }
+
   const result = await generate({
-    model: opts.model ?? "claude-sonnet-5",
-    effort: opts.effort ?? "medium",
+    model,
+    effort,
     system: opts.system,
-    maxTokens: opts.maxTokens ?? 3000,
-    turns: [{ role: "user", text: opts.user }],
+    maxTokens,
+    turns,
   });
   await recordUsage({
     userId: opts.ctx.userId,
@@ -99,6 +149,8 @@ export async function runAgent<T>(opts: {
     feature: `meeting.${opts.agent}`,
     inputTokens: result.inputTokens,
     outputTokens: result.outputTokens,
+    cacheCreationInputTokens: result.cacheCreationInputTokens,
+    cacheReadInputTokens: result.cacheReadInputTokens,
   });
   return extractJson<T>(result.text);
 }

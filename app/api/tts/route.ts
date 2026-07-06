@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { synthesizeSpeech } from "@/lib/tts";
 
 export const runtime = "nodejs";
@@ -9,6 +10,14 @@ export const maxDuration = 60;
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const rl = await checkRateLimit("tts", user.id, { limit: 30, windowSeconds: 60 });
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } },
+    );
+  }
 
   let body: { text?: string };
   try {

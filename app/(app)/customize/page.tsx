@@ -26,6 +26,7 @@ import {
   connectMcpServer,
   disconnectMcpServer,
   toggleMcpServer,
+  updateMcpToolPolicy,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -149,30 +150,76 @@ export default async function CustomizePage({
               {mcpConns.map((c) => (
                 <div
                   key={c.id}
-                  className="flex items-center justify-between gap-2 rounded-lg border border-neutral-200 px-4 py-3 dark:border-neutral-800"
+                  className="rounded-lg border border-neutral-200 px-4 py-3 dark:border-neutral-800"
                 >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-sm font-medium text-neutral-800 dark:text-neutral-100">
-                      {c.name}
-                      {!c.enabled && <Badge className="bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">off</Badge>}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                        {c.name}
+                        {!c.enabled && <Badge className="bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">off</Badge>}
+                      </div>
+                      <div className="truncate text-xs text-neutral-400">{c.url}</div>
                     </div>
-                    <div className="truncate text-xs text-neutral-400">{c.url}</div>
+                    <div className="flex shrink-0 gap-1">
+                      <form action={toggleMcpServer}>
+                        <input type="hidden" name="id" value={c.id} />
+                        <input type="hidden" name="enabled" value={c.enabled ? "" : "on"} />
+                        <SubmitButton variant="secondary" size="sm">
+                          {c.enabled ? "Disable" : "Enable"}
+                        </SubmitButton>
+                      </form>
+                      <form action={disconnectMcpServer}>
+                        <input type="hidden" name="id" value={c.id} />
+                        <SubmitButton variant="secondary" size="sm">
+                          Remove
+                        </SubmitButton>
+                      </form>
+                    </div>
                   </div>
-                  <div className="flex shrink-0 gap-1">
-                    <form action={toggleMcpServer}>
+                  <details className="mt-2 border-t border-neutral-100 pt-2 dark:border-neutral-800">
+                    <summary className="cursor-pointer text-xs font-medium text-neutral-600 dark:text-neutral-300">
+                      Tool access — {c.allowWrites ? "writes allowed" : "read-only"}
+                      {c.allowedTools?.length
+                        ? ` · ${c.allowedTools.length} tool(s) allowlisted`
+                        : " · all tools"}
+                    </summary>
+                    <form action={updateMcpToolPolicy} className="mt-3 space-y-3">
                       <input type="hidden" name="id" value={c.id} />
-                      <input type="hidden" name="enabled" value={c.enabled ? "" : "on"} />
-                      <SubmitButton variant="secondary" size="sm">
-                        {c.enabled ? "Disable" : "Enable"}
+                      <label className="flex items-start gap-2 text-sm text-neutral-700 dark:text-neutral-300">
+                        <input
+                          type="checkbox"
+                          name="allowWrites"
+                          defaultChecked={c.allowWrites}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          Allow write/mutating tools
+                          <span className="mt-0.5 block text-xs text-neutral-400">
+                            When off, the AI is instructed not to call tools that create, edit,
+                            send, or delete anything, and this server is never used by unattended
+                            automations. Set a tool allowlist below for a hard guarantee.
+                          </span>
+                        </span>
+                      </label>
+                      <div>
+                        <Label htmlFor={`allowedTools-${c.id}`}>Tool allowlist (optional)</Label>
+                        <Textarea
+                          id={`allowedTools-${c.id}`}
+                          name="allowedTools"
+                          rows={3}
+                          defaultValue={(c.allowedTools ?? []).join("\n")}
+                          placeholder={"search_pages\nget_page"}
+                        />
+                        <p className="mt-1 text-xs text-neutral-400">
+                          Exact tool names, one per line. When set, ONLY these tools are exposed
+                          to the model. Leave empty to expose all of the server&apos;s tools.
+                        </p>
+                      </div>
+                      <SubmitButton size="sm" variant="secondary">
+                        Save tool access
                       </SubmitButton>
                     </form>
-                    <form action={disconnectMcpServer}>
-                      <input type="hidden" name="id" value={c.id} />
-                      <SubmitButton variant="secondary" size="sm">
-                        Remove
-                      </SubmitButton>
-                    </form>
-                  </div>
+                  </details>
                 </div>
               ))}
             </div>

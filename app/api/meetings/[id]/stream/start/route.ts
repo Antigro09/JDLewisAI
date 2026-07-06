@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { companies } from "@/lib/db/schema";
 import { getCurrentUser } from "@/lib/auth/server";
 import { getMeetingForUser } from "@/lib/meetings/access";
 import { LIVE_STATUSES } from "@/lib/meetings/state";
@@ -25,6 +28,20 @@ export async function POST(
     return NextResponse.json(
       { error: `Meeting is ${meeting.status}; recording can no longer start.` },
       { status: 409 },
+    );
+  }
+  // Company consent policy: when explicit recording consent is required, no
+  // capture may start until this session recorded an acknowledgement
+  // (POST /api/meetings/[id]/consent — the live workspace collects it).
+  const [company] = await db
+    .select({ recordingConsentRequired: companies.recordingConsentRequired })
+    .from(companies)
+    .where(eq(companies.id, meeting.companyId))
+    .limit(1);
+  if (company?.recordingConsentRequired && !meeting.consentConfirmed) {
+    return NextResponse.json(
+      { error: "Recording consent has not been acknowledged for this meeting." },
+      { status: 403 },
     );
   }
 

@@ -1,4 +1,4 @@
-import { generate, extractJson, type GenerateResult } from "@/lib/claude/chat";
+import { generateStructured, type GenerateResult } from "@/lib/claude/chat";
 
 export type RfiDraftResult = {
   draft: string;
@@ -15,6 +15,16 @@ as a well-formatted string (use \\n for newlines). The draft should include:
 - Requested action or response
 Keep it concise and professional.`;
 
+/** Enforced via structured outputs — the draft is the whole payload. */
+const DRAFT_SCHEMA = {
+  type: "object",
+  properties: {
+    draft: { type: "string" },
+  },
+  required: ["draft"],
+  additionalProperties: false,
+};
+
 export async function generateRfiDraft(opts: {
   subject: string;
   question: string;
@@ -30,11 +40,13 @@ export async function generateRfiDraft(opts: {
   if (opts.discipline) ctx.push(`Discipline: ${opts.discipline}`);
   ctx.push(`Question/Issue:\n${opts.question}`);
 
-  const usage = await generate({
+  const { data, ...meta } = await generateStructured<{ draft?: string }>({
     model: opts.model,
     effort: opts.effort ?? "medium",
     system: SYSTEM,
     maxTokens: 2000,
+    schema: DRAFT_SCHEMA,
+    schemaName: "rfi_draft",
     turns: [
       {
         role: "user",
@@ -42,8 +54,11 @@ export async function generateRfiDraft(opts: {
       },
     ],
   });
+  // Structured path returns parsed data, not raw text — keep the GenerateResult
+  // shape callers meter against.
+  const usage: GenerateResult = { text: "", ...meta };
 
-  const parsed = extractJson<{ draft?: string }>(usage.text);
-  const draft = parsed?.draft ?? usage.text;
+  // Empty only if even generateStructured's fallback ladder produced nothing.
+  const draft = typeof data?.draft === "string" ? data.draft : "";
   return { draft, usage };
 }

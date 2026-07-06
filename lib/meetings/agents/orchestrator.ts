@@ -11,6 +11,7 @@ import {
   type MeetingEventType,
   type MeetingState,
 } from "@/lib/db/schema";
+import { LIVE_MEETING_MODEL } from "@/lib/claude/models";
 import { loadMeetingBundle, transcriptText } from "@/lib/meetings/access";
 import { transitionMeeting } from "@/lib/meetings/state";
 import { meetingToMarkdown } from "@/lib/meetings/export";
@@ -25,8 +26,6 @@ import { runDecisionAgent, type ExtractedDecision } from "./decisions";
 import { runRiskAgent, type ExtractedRisk } from "./risks";
 import { runMemoryRagAgent } from "./rag";
 import { runMinutesAgent, runQaAgent } from "./minutes";
-
-const LIVE_MODEL = "claude-haiku-4-5-20251001";
 
 // Categories that warrant waking the (more expensive) specialist agents.
 const RISK_CATEGORIES: MeetingEventType[] = [
@@ -72,7 +71,7 @@ async function buildContext(user: AppUser, meetingId: string) {
     linkedProjectName: bundle.project?.name ?? null,
     knownProjects,
     transcript,
-    liveModel: LIVE_MODEL,
+    liveModel: LIVE_MEETING_MODEL,
   };
   return { bundle, ctx, knownProjectIds: userProjects.map((p) => p.id) };
 }

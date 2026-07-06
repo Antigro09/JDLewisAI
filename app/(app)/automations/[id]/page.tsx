@@ -141,21 +141,50 @@ export default async function AutomationDetailPage({
                 ))}
               </Select>
             </div>
-            <label className="flex items-start gap-2 text-sm text-neutral-700 dark:text-neutral-300">
+            <div className="flex flex-wrap items-start gap-2 text-sm text-neutral-700 dark:text-neutral-300">
               <input
                 type="checkbox"
+                id="allowSend"
                 name="allowSend"
                 defaultChecked={a.allowSend}
-                className="mt-0.5"
+                className="peer mt-0.5"
               />
-              <span>
+              <label htmlFor="allowSend" className="flex-1">
                 Allow sending email
                 <span className="mt-0.5 block text-xs text-neutral-400">
                   When off, this automation only drafts emails. When on, it can send email
-                  unattended — no confirmation, so use with care.
+                  unattended — sends are limited to the recipients and daily cap below.
                 </span>
-              </span>
-            </label>
+              </label>
+              <div className="hidden w-full space-y-3 peer-checked:block">
+                <div>
+                  <Label htmlFor="sendAllowlist">Allowed recipients</Label>
+                  <Textarea
+                    id="sendAllowlist"
+                    name="sendAllowlist"
+                    rows={3}
+                    defaultValue={(a.sendAllowlist ?? []).join("\n")}
+                    placeholder={"alice@example.com\n@yourcompany.com"}
+                  />
+                  <p className="mt-1 text-xs text-neutral-400">
+                    One address or @domain per line. Unattended sends are rejected unless
+                    every recipient matches. Empty = no unattended sends at all.
+                  </p>
+                </div>
+                <div>
+                  <Label htmlFor="maxSendsPerDay">Max sends per day</Label>
+                  <Input
+                    id="maxSendsPerDay"
+                    name="maxSendsPerDay"
+                    type="number"
+                    min={1}
+                    max={500}
+                    defaultValue={a.maxSendsPerDay}
+                    className="w-28"
+                  />
+                </div>
+              </div>
+            </div>
             <SubmitButton>Save</SubmitButton>
           </form>
 

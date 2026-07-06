@@ -5,11 +5,17 @@ on:
     branches: ["**"]
   pull_request:
 
+# Cancel superseded runs on the same ref (e.g. rapid pushes to one branch).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # Dummy values so `prisma generate` and `next build` succeed without secrets.
+      # Dummy values so `next build` succeeds without secrets (the Drizzle
+      # pool defers connecting until first query, so no DB is needed).
       DATABASE_URL: "postgresql://user:pass@localhost:5432/db"
       DIRECT_URL: "postgresql://user:pass@localhost:5432/db"
       AUTH_SECRET: "ci-placeholder-secret-ci-placeholder-secret"
@@ -22,5 +28,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
       - run: npm run build

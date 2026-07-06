@@ -1,4 +1,4 @@
-import { generate, extractJson, type GenerateResult } from "@/lib/claude/chat";
+import { generateStructured, type GenerateResult } from "@/lib/claude/chat";
 import type { ScopeSections } from "@/lib/db/schema";
 
 const EMPTY: ScopeSections = {
@@ -33,6 +33,32 @@ Base permits/inspections on typical US commercial practice; where jurisdiction m
 phrase items generically (e.g. "Rough-in inspection by AHJ"). Do not invent project-specific
 quantities unless provided.`;
 
+const STRING_ARRAY = { type: "array", items: { type: "string" } };
+
+/** Enforced via structured outputs — mirrors ScopeSections exactly. */
+const SCOPE_SCHEMA = {
+  type: "object",
+  properties: {
+    workIncluded: STRING_ARRAY,
+    exclusions: STRING_ARRAY,
+    assumptions: STRING_ARRAY,
+    requiredInspections: STRING_ARRAY,
+    requiredPermits: STRING_ARRAY,
+    requiredSubmittals: STRING_ARRAY,
+    closeoutRequirements: STRING_ARRAY,
+  },
+  required: [
+    "workIncluded",
+    "exclusions",
+    "assumptions",
+    "requiredInspections",
+    "requiredPermits",
+    "requiredSubmittals",
+    "closeoutRequirements",
+  ],
+  additionalProperties: false,
+};
+
 export async function generateScopeOfWork(opts: {
   trade: string;
   projectName?: string;
@@ -44,11 +70,13 @@ export async function generateScopeOfWork(opts: {
   if (opts.projectName) ctx.push(`Project: ${opts.projectName}`);
   if (opts.details) ctx.push(`Project details / special conditions:\n${opts.details}`);
 
-  const usage = await generate({
+  const { data, ...meta } = await generateStructured<Partial<ScopeSections>>({
     model: opts.model,
     effort: opts.effort ?? "high",
     system: SYSTEM,
     maxTokens: 4000,
+    schema: SCOPE_SCHEMA,
+    schemaName: "scope_of_work",
     turns: [
       {
         role: "user",
@@ -56,11 +84,13 @@ export async function generateScopeOfWork(opts: {
       },
     ],
   });
+  // Structured path returns parsed data, not raw text — keep the GenerateResult
+  // shape callers meter against.
+  const usage: GenerateResult = { text: "", ...meta };
 
-  const parsed = extractJson<Partial<ScopeSections>>(usage.text);
   const sections: ScopeSections = {
     ...EMPTY,
-    ...(parsed ?? {}),
+    ...(data ?? {}),
   };
   // Ensure every field is an array of strings.
   (Object.keys(EMPTY) as (keyof ScopeSections)[]).forEach((k) => {

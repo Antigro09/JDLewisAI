@@ -1,5 +1,14 @@
 import type { MeetingPriority } from "@/lib/db/schema";
-import { runAgent, text, priority, clampConfidence, timestamp, type AgentContext } from "./base";
+import {
+  runAgent,
+  objectSchema,
+  text,
+  priority,
+  clampConfidence,
+  timestamp,
+  PRIORITIES,
+  type AgentContext,
+} from "./base";
 
 /**
  * Action Item agent (spec §9). Extracts explicit AND implied work assignments,
@@ -27,6 +36,21 @@ type Raw = {
   }[];
 };
 
+const schema = objectSchema({
+  actionItems: {
+    type: "array",
+    items: objectSchema({
+      ownerName: { type: ["string", "null"] },
+      task: { type: "string" },
+      priority: { type: "string", enum: PRIORITIES },
+      dueDate: { type: ["string", "null"] },
+      status: { type: "string" },
+      confidence: { type: "integer" },
+      sourceTimestampMs: { type: "number" },
+    }),
+  },
+});
+
 export async function runActionItemAgent(ctx: AgentContext): Promise<ExtractedActionItem[]> {
   const system = `You are the Action Item agent for a general contractor. Extract every task that
 someone is expected to do. Capture BOTH explicit ("I'll send the RFI") and IMPLIED assignments
@@ -40,6 +64,7 @@ Return STRICT JSON only: {"actionItems":[{...}]}.`;
     ctx,
     agent: "action_items",
     system,
+    schema,
     maxTokens: 2500,
     user: `Transcript:\n${ctx.transcript}`,
   });

@@ -13,9 +13,13 @@ export async function createMeetingAction(formData: FormData) {
   const title = truncate(String(formData.get("title") ?? "").trim(), 120);
   if (!title) return;
   const projectId = String(formData.get("projectId") ?? "") || null;
-  const consentConfirmed = formData.get("consentConfirmed") === "on";
   const rawAudioEnabled = formData.get("rawAudioEnabled") === "on";
   const company = await ensureCompanyForUser(user);
+  // A company consent policy overrides the form's blanket employee-agreement
+  // value — the live workspace collects the acknowledgement before capture.
+  const consentConfirmed = company.recordingConsentRequired
+    ? false
+    : formData.get("consentConfirmed") === "on";
 
   const [meeting] = await db
     .insert(meetingSessions)

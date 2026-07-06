@@ -1,4 +1,4 @@
-import { generate, extractJson, type GenerateResult } from "@/lib/claude/chat";
+import { generateStructured, type GenerateResult } from "@/lib/claude/chat";
 
 export type ChangeOrderDraftResult = {
   draft: string;
@@ -15,6 +15,16 @@ a well-formatted string (use \\n for newlines). Include:
 - Schedule impact (if provided, otherwise state TBD)
 - Approval signature lines
 Be thorough but concise. Use professional construction contract language.`;
+
+/** Enforced via structured outputs — the draft is the whole payload. */
+const DRAFT_SCHEMA = {
+  type: "object",
+  properties: {
+    draft: { type: "string" },
+  },
+  required: ["draft"],
+  additionalProperties: false,
+};
 
 export async function generateChangeOrderDraft(opts: {
   title: string;
@@ -35,11 +45,13 @@ export async function generateChangeOrderDraft(opts: {
   if (opts.costImpact) ctx.push(`Cost Impact: ${opts.costImpact}`);
   if (opts.scheduleImpact) ctx.push(`Schedule Impact: ${opts.scheduleImpact}`);
 
-  const usage = await generate({
+  const { data, ...meta } = await generateStructured<{ draft?: string }>({
     model: opts.model,
     effort: opts.effort ?? "medium",
     system: SYSTEM,
     maxTokens: 2000,
+    schema: DRAFT_SCHEMA,
+    schemaName: "change_order_draft",
     turns: [
       {
         role: "user",
@@ -47,8 +59,11 @@ export async function generateChangeOrderDraft(opts: {
       },
     ],
   });
+  // Structured path returns parsed data, not raw text — keep the GenerateResult
+  // shape callers meter against.
+  const usage: GenerateResult = { text: "", ...meta };
 
-  const parsed = extractJson<{ draft?: string }>(usage.text);
-  const draft = parsed?.draft ?? usage.text;
+  // Empty only if even generateStructured's fallback ladder produced nothing.
+  const draft = typeof data?.draft === "string" ? data.draft : "";
   return { draft, usage };
 }

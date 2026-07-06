@@ -23,6 +23,7 @@ import {
   Mic,
   AudioLines,
   Image as ImageIcon,
+  Paperclip,
   FolderKanban,
   Plug,
   Blocks,
@@ -82,6 +83,17 @@ function readFileAsBase64(file: File): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+// Mirrors the file input's accept list (image/*,application/pdf,text/*,.csv,.json,.md)
+// so dropped/pasted files admit exactly what the picker does.
+function isAcceptedFile(f: File): boolean {
+  const mime = f.type;
+  if (mime.startsWith("image/") || mime === "application/pdf" || mime.startsWith("text/")) {
+    return true;
+  }
+  // .csv/.json/.md can arrive with a non-text mime (application/json) or none.
+  return /\.(csv|json|md)$/i.test(f.name);
 }
 
 /** Light markdown → plain text for text-to-speech. */
@@ -506,6 +518,8 @@ export function ChatClient({
   // Voice: dictation (mic → text) and voice conversation (AudioLines)
   const [listening, setListening] = useState(false); // dictation bar active
   const [voiceChat, setVoiceChat] = useState(false); // full voice conversation
+  // File drag in progress over the window (shows the drop overlay)
+  const [dragActive, setDragActive] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<"listening" | "thinking" | "speaking">(
     "listening",
   );
@@ -514,6 +528,9 @@ export function ChatClient({
   const convIdRef = useRef<string | null>(conversationId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  // dragenter/dragleave fire for every child element crossed; the counter
+  // keeps the overlay from flickering.
+  const dragDepthRef = useRef(0);
   const plusMenuRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
@@ -576,21 +593,98 @@ export function ChatClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Drag-and-drop anywhere over the chat column. Window-level listeners (with
+  // preventDefault) also stop the browser from navigating to a dropped file.
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) =>
+      Array.from(e.dataTransfer?.types ?? []).includes("Files");
+    const onDragEnter = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepthRef.current += 1;
+      // Voice conversation hides the composer (and the "+" menu), so no
+      // overlay / attaching there.
+      if (!voiceChatRef.current) setDragActive(true);
+    };
+    const onDragOver = (e: DragEvent) => {
+      if (hasFiles(e)) e.preventDefault();
+    };
+    const onDragLeave = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+      if (dragDepthRef.current === 0) setDragActive(false);
+    };
+    const onDrop = (e: DragEvent) => {
+      dragDepthRef.current = 0;
+      setDragActive(false);
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      if (voiceChatRef.current) return;
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      if (files.length > 0) void addFiles(files);
+    };
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDrop);
+    };
+    // addFiles only touches state setters, which are stable across renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function onModelChange(id: string) {
     setModel(id);
     const m = models.find((x) => x.id === id);
     if (m && m.efforts.length > 0 && !m.efforts.includes(effort)) setEffort("high");
   }
 
-  async function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []);
+  // Single attach path shared by the "+" file picker, paste, and drag-drop.
+  async function addFiles(files: File[]) {
+    const accepted = files.filter(isAcceptedFile);
+    if (accepted.length < files.length) {
+      setError("Only images, PDFs, and text files (.csv, .json, .md) can be attached.");
+    }
+    if (accepted.length === 0) return;
     const next: Attachment[] = [];
-    for (const f of files) {
+    for (const f of accepted) {
       const dataBase64 = await readFileAsBase64(f);
       next.push({ name: f.name, mime: f.type || "application/octet-stream", dataBase64 });
     }
     setAttachments((prev) => [...prev, ...next]);
+  }
+
+  async function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    await addFiles(Array.from(e.target.files ?? []));
     if (fileRef.current) fileRef.current.value = "";
+  }
+
+  // Attach pasted images (screenshots). Plain-text paste is untouched.
+  function onComposerPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const images = Array.from(e.clipboardData?.items ?? [])
+      .filter((it) => it.kind === "file" && it.type.startsWith("image/"))
+      .map((it) => it.getAsFile())
+      .filter((f): f is File => f !== null);
+    if (images.length === 0) return;
+    // Clipboard screenshots all arrive as "image.png"; timestamp them so
+    // multiple pastes stay distinguishable in the attachment row.
+    const stamp = Date.now();
+    void addFiles(
+      images.map((f, i) =>
+        f.name && f.name !== "image.png"
+          ? f
+          : new File([f], `pasted-${stamp}${i > 0 ? `-${i}` : ""}.${f.type.split("/")[1] || "png"}`, {
+              type: f.type || "image/png",
+            }),
+      ),
+    );
+    // Suppress the default paste only for image-only clipboards; mixed
+    // image+text copies still paste their text normally.
+    if (!Array.from(e.clipboardData.types).includes("text/plain")) e.preventDefault();
   }
 
   function getSR() {
@@ -1130,7 +1224,22 @@ export function ChatClient({
     "rounded p-1 hover:bg-neutral-100 hover:text-neutral-700 disabled:opacity-40 dark:hover:bg-neutral-800 dark:hover:text-neutral-200";
 
   return (
-    <div className="flex h-full flex-col bg-neutral-50 dark:bg-neutral-950">
+    <div className="relative flex h-full flex-col bg-neutral-50 dark:bg-neutral-950">
+      {/* Drop overlay — pointer-events-none so the drop still reaches the
+          window listeners underneath */}
+      {dragActive && (
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-white/75 backdrop-blur-sm dark:bg-neutral-950/75">
+          <div className="flex flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-brand-400 bg-white px-10 py-8 shadow-lg dark:border-brand-600 dark:bg-neutral-900">
+            <Paperclip size={28} className="text-brand-600 dark:text-brand-400" />
+            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+              Drop files to attach
+            </p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              Images, PDFs & text files
+            </p>
+          </div>
+        </div>
+      )}
       {/* Thread */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-6">
         <div className="mx-auto max-w-3xl space-y-6">
@@ -1435,6 +1544,7 @@ export function ChatClient({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
+              onPaste={onComposerPaste}
               rows={1}
               placeholder="Message ContractorAI…"
               className="max-h-48 w-full resize-none bg-transparent px-1 text-sm outline-none placeholder:text-neutral-400 dark:text-neutral-100"

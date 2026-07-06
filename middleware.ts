@@ -17,7 +17,9 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Admin area requires ADMIN role.
+  // Admin area requires ADMIN role. This JWT check is a UX-only early
+  // redirect — real authorization happens server-side in requireAdmin(),
+  // which re-checks role, disabled and tokenVersion against the database.
   if (pathname.startsWith("/admin") && claims?.role !== "ADMIN") {
     return NextResponse.redirect(new URL("/chat", req.url));
   }

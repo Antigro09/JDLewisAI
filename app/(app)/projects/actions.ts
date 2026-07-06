@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects, projectFiles } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/server";
+import { readUploadOrThrow } from "@/lib/uploads";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
@@ -59,10 +60,8 @@ export async function uploadProjectFile(projectId: string, formData: FormData) {
   await ownProjectOrThrow(user.id, projectId);
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return;
-  if (file.size > MAX_FILE_BYTES) {
-    throw new Error("File exceeds 10 MB limit");
-  }
-  const buf = Buffer.from(await file.arrayBuffer());
+  // Enforces the size ceiling and magic-byte/MIME consistency.
+  const buf = await readUploadOrThrow(file, { maxBytes: MAX_FILE_BYTES });
   await db.insert(projectFiles).values({
     projectId,
     name: file.name,

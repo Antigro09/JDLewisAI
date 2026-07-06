@@ -124,6 +124,21 @@ export const MODELS: ModelInfo[] = [
 export const DEFAULT_MODEL =
   MODELS.find((m) => m.default && m.enabled)?.id ?? "claude-sonnet-5";
 
+/** Cheapest/fastest model, pinned for mechanical work (titles, coordinator
+ * routing, field extraction, verbatim transcription). Note: efforts is empty
+ * and adaptiveThinking is false — resolveModel handles both. */
+export const MECHANICAL_MODEL = "claude-haiku-4-5-20251001";
+
+/** Default model for one-shot document generation (lib/claude/chat.ts generate,
+ * construction tool generators). Centralized here so IDs aren't scattered. */
+export const DEFAULT_GENERATE_MODEL = "claude-opus-4-8";
+
+/** Balanced model for the meeting-intelligence agents (closeout analysis). */
+export const MEETING_MODEL = "claude-sonnet-5";
+
+/** Cheap model for high-frequency live meeting ticks. */
+export const LIVE_MEETING_MODEL = MECHANICAL_MODEL;
+
 export function getModel(id: string): ModelInfo | undefined {
   return MODELS.find((m) => m.id === id);
 }
@@ -150,15 +165,23 @@ export function resolveModel(
   return { model, effort: e };
 }
 
+/** Estimated cost in fractional cents (never rounded — cheap Haiku calls must
+ * not collapse to 0). Cache writes bill at 1.25× input, cache reads at 0.1×. */
 export function estimateCostCents(
   modelId: string,
-  inputTokens: number,
-  outputTokens: number,
+  tokens: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheCreationInputTokens?: number;
+    cacheReadInputTokens?: number;
+  },
 ): number {
   const m = getModel(modelId);
   if (!m) return 0;
   const dollars =
-    (inputTokens / 1_000_000) * m.priceIn +
-    (outputTokens / 1_000_000) * m.priceOut;
-  return Math.round(dollars * 100);
+    (tokens.inputTokens / 1_000_000) * m.priceIn +
+    (tokens.outputTokens / 1_000_000) * m.priceOut +
+    ((tokens.cacheCreationInputTokens ?? 0) / 1_000_000) * m.priceIn * 1.25 +
+    ((tokens.cacheReadInputTokens ?? 0) / 1_000_000) * m.priceIn * 0.1;
+  return dollars * 100;
 }

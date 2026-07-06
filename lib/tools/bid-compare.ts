@@ -1,4 +1,4 @@
-import { generate, extractJson, type GenerateResult } from "@/lib/claude/chat";
+import { generateStructured, type GenerateResult } from "@/lib/claude/chat";
 
 export type BidVendor = { name: string; totalAmt: string; notes?: string };
 
@@ -16,6 +16,17 @@ Output a JSON object with two keys:
   or what additional information is needed before awarding.
 Be objective, specific, and professional.`;
 
+/** Enforced via structured outputs — mirrors the two keys in SYSTEM. */
+const ANALYSIS_SCHEMA = {
+  type: "object",
+  properties: {
+    analysis: { type: "string" },
+    recommendation: { type: "string" },
+  },
+  required: ["analysis", "recommendation"],
+  additionalProperties: false,
+};
+
 export async function analyzeBids(opts: {
   title: string;
   trade?: string;
@@ -32,11 +43,16 @@ export async function analyzeBids(opts: {
     ctx.push(`${i + 1}. ${v.name} — $${v.totalAmt}${v.notes ? ` (${v.notes})` : ""}`);
   });
 
-  const usage = await generate({
+  const { data, ...meta } = await generateStructured<{
+    analysis?: string;
+    recommendation?: string;
+  }>({
     model: opts.model,
     effort: opts.effort ?? "high",
     system: SYSTEM,
     maxTokens: 3000,
+    schema: ANALYSIS_SCHEMA,
+    schemaName: "bid_analysis",
     turns: [
       {
         role: "user",
@@ -44,9 +60,11 @@ export async function analyzeBids(opts: {
       },
     ],
   });
+  // Structured path returns parsed data, not raw text — keep the GenerateResult
+  // shape callers meter against.
+  const usage: GenerateResult = { text: "", ...meta };
 
-  const parsed = extractJson<{ analysis?: string; recommendation?: string }>(usage.text);
-  const analysis = parsed?.analysis ?? usage.text;
-  const recommendation = parsed?.recommendation ?? "";
+  const analysis = typeof data?.analysis === "string" ? data.analysis : "";
+  const recommendation = typeof data?.recommendation === "string" ? data.recommendation : "";
   return { analysis, recommendation, usage };
 }

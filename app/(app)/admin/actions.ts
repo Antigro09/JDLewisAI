@@ -1,24 +1,34 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { users, documentTemplates, type Role } from "@/lib/db/schema";
+import { users, documentTemplates, companies, type Role } from "@/lib/db/schema";
 import { requireAdmin } from "@/lib/auth/server";
+import { ensureCompanyForUser } from "@/lib/meetings/access";
 import { PLUGINS, setOrgPlugin } from "@/lib/plugins";
 import { getOrgTemplate } from "@/lib/templates/render";
+import { readUploadOrThrow } from "@/lib/uploads";
 
 export async function setUserRole(userId: string, role: Role) {
   const admin = await requireAdmin();
   if (admin.id === userId) return; // don't change your own role (avoid lockout)
-  await db.update(users).set({ role }).where(eq(users.id, userId));
+  // tokenVersion bump revokes the user's outstanding sessions so the new role
+  // takes effect immediately, not at next sign-in.
+  await db
+    .update(users)
+    .set({ role, tokenVersion: sql`${users.tokenVersion} + 1` })
+    .where(eq(users.id, userId));
   revalidatePath("/admin");
 }
 
 export async function setUserDisabled(userId: string, disabled: boolean) {
   const admin = await requireAdmin();
   if (admin.id === userId) return; // can't disable yourself
-  await db.update(users).set({ disabled }).where(eq(users.id, userId));
+  await db
+    .update(users)
+    .set({ disabled, tokenVersion: sql`${users.tokenVersion} + 1` })
+    .where(eq(users.id, userId));
   revalidatePath("/admin");
 }
 
@@ -37,6 +47,32 @@ export async function saveOrgPluginDefaults(formData: FormData) {
   revalidatePath("/admin");
 }
 
+/**
+ * Meeting recording governance (companies row): transcript retention window
+ * and the recording-consent policy. Blank/invalid retention = null = keep
+ * transcripts forever; the retention janitor only purges when it's set.
+ */
+export async function saveMeetingGovernance(formData: FormData) {
+  const admin = await requireAdmin();
+  const company = await ensureCompanyForUser(admin);
+
+  const rawDays = String(formData.get("transcriptRetentionDays") ?? "").trim();
+  const parsedDays = Number.parseInt(rawDays, 10);
+  const transcriptRetentionDays =
+    Number.isFinite(parsedDays) && parsedDays > 0 ? parsedDays : null;
+
+  await db
+    .update(companies)
+    .set({
+      transcriptRetentionDays,
+      recordingConsentRequired: formData.get("recordingConsentRequired") === "on",
+      recordingConsentText:
+        String(formData.get("recordingConsentText") ?? "").trim() || null,
+    })
+    .where(eq(companies.id, company.id));
+  revalidatePath("/admin");
+}
+
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 
 export async function saveDocumentTemplate(formData: FormData) {
@@ -46,9 +82,8 @@ export async function saveDocumentTemplate(formData: FormData) {
   let logo = existing?.logo ?? null;
   const file = formData.get("logo");
   if (file instanceof File && file.size > 0) {
-    if (file.size > MAX_LOGO_BYTES) throw new Error("Logo exceeds 2 MB.");
-    const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
-    logo = `data:${file.type || "image/png"};base64,${base64}`;
+    const buf = await readUploadOrThrow(file, { maxBytes: MAX_LOGO_BYTES });
+    logo = `data:${file.type || "image/png"};base64,${buf.toString("base64")}`;
   }
 
   const values = {

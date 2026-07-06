@@ -8,6 +8,7 @@ import {
   transcriptSegments,
 } from "@/lib/db/schema";
 import { embedTexts, embedText, embeddingsConfigured } from "@/lib/embeddings";
+import { log } from "@/lib/log";
 
 /**
  * Semantic meeting memory (spec §12) backed by pgvector. Indexing embeds the
@@ -111,7 +112,8 @@ export async function semanticSearchMeetings(
   let vec: number[] | null;
   try {
     vec = await embedText(query);
-  } catch {
+  } catch (err) {
+    log.error("meetings.semantic_search.embed_failed", err, { companyId });
     return [];
   }
   if (!vec) return [];
@@ -135,8 +137,11 @@ export async function semanticSearchMeetings(
       content: r.content,
       score: Math.max(0, 1 - Number(r.distance)),
     }));
-  } catch {
-    // pgvector extension not installed / column missing → fall back to FTS.
+  } catch (err) {
+    // pgvector extension not installed / column missing → fall back to FTS,
+    // but leave a trace so a real query failure is distinguishable from
+    // "no results".
+    log.error("meetings.semantic_search.query_failed", err, { companyId });
     return [];
   }
 }

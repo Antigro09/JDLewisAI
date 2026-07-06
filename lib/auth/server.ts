@@ -24,6 +24,9 @@ export async function getCurrentUser(): Promise<AppUser | null> {
   const rows = await db.select().from(users).where(eq(users.id, claims.sub));
   const user = rows[0];
   if (!user || user.disabled) return null;
+  // Session revocation: tokens minted before the last tokenVersion bump
+  // (password change, role change, "sign out all devices") are rejected.
+  if (claims.tv < user.tokenVersion) return null;
   return user;
 }
 
@@ -45,6 +48,7 @@ export async function setSession(user: AppUser): Promise<void> {
     email: user.email,
     name: user.name,
     role: user.role,
+    tv: user.tokenVersion,
   });
   const jar = await cookies();
   jar.set(SESSION_COOKIE, token, sessionCookieOptions);

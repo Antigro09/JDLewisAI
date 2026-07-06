@@ -1,4 +1,4 @@
-import { runAgent, text, type AgentContext } from "./base";
+import { runAgent, objectSchema, text, type AgentContext } from "./base";
 
 /**
  * Meeting Minutes agent + Quality Assurance agent (spec §14). These are two
@@ -6,6 +6,15 @@ import { runAgent, text, type AgentContext } from "./base";
  * the consolidated brief; QA verifies completeness/dedupe/formatting/tone and
  * returns the corrected final plus its QA notes.
  */
+
+const minutesSchema = objectSchema({
+  minutesMarkdown: { type: "string" },
+});
+
+const qaSchema = objectSchema({
+  minutesMarkdown: { type: "string" },
+  qaNotes: { type: "array", items: { type: "string" } },
+});
 
 export async function runMinutesAgent(
   ctx: AgentContext,
@@ -22,6 +31,7 @@ Return STRICT JSON only: {"minutesMarkdown":"..."}.`;
     ctx,
     agent: "minutes",
     system,
+    schema: minutesSchema,
     maxTokens: 4000,
     user: `STRUCTURED BRIEF:\n${structuredBrief}\n\nTRANSCRIPT:\n${ctx.transcript}`,
   });
@@ -43,6 +53,7 @@ Return STRICT JSON only: {"minutesMarkdown":"...","qaNotes":["..."]}.`;
     ctx,
     agent: "qa",
     system,
+    schema: qaSchema,
     maxTokens: 4000,
     user: `STRUCTURED BRIEF:\n${structuredBrief}\n\nDRAFT MINUTES:\n${draftMinutes}`,
   });

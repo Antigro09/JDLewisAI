@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { invoices } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/server";
+import { readUploadOrThrow } from "@/lib/uploads";
 import { analyzePlan } from "@/lib/tools/plan";
 import { extractInvoice } from "@/lib/tools/invoice";
 import { recordUsage } from "@/lib/usage";
@@ -21,9 +22,18 @@ export async function captureAndAnalyzeAction(
   if (!(file instanceof File) || file.size === 0) {
     return { error: "Take or choose a photo first." };
   }
-  if (file.size > MAX_FILE_BYTES) return { error: "File exceeds 15 MB limit." };
   const allowed = file.type.startsWith("image/") || file.type === "application/pdf";
   if (!allowed) return { error: "Use a photo or PDF." };
+
+  // Enforces the size ceiling and magic-byte/MIME consistency.
+  let base64: string;
+  try {
+    base64 = (await readUploadOrThrow(file, { maxBytes: MAX_FILE_BYTES })).toString(
+      "base64",
+    );
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Invalid file." };
+  }
 
   const kind = String(formData.get("kind") ?? "plan");
   const projectId = String(formData.get("projectId") ?? "") || null;
@@ -31,7 +41,6 @@ export async function captureAndAnalyzeAction(
   if (kind === "invoice") {
     let insertedId: string;
     try {
-      const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
       const { data, usage } = await extractInvoice({
         fileBase64: base64,
         mime: file.type,
@@ -66,7 +75,6 @@ export async function captureAndAnalyzeAction(
 
   // default: plan reading
   try {
-    const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
     const question = String(formData.get("question") ?? "").trim() || undefined;
     const { markdown, usage } = await analyzePlan({
       fileBase64: base64,

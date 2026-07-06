@@ -1,4 +1,4 @@
-import { generate, extractJson, type GenerateResult } from "@/lib/claude/chat";
+import { generateStructured, type GenerateResult } from "@/lib/claude/chat";
 
 /**
  * Invoice line-item aggregation (the Drive-folder → spreadsheet feature).
@@ -23,17 +23,44 @@ Use the product/material name as written on the invoice (e.g. "2x4x8 SPF stud", 
 measure if shown (e.g. "EA", "LF", "SF", "BOX") — omit it if not stated. Skip lines that aren't
 billable materials (e.g. subtotal/tax/freight rows).`;
 
+/** Enforced via structured outputs — mirrors the shape in SYSTEM ("unit" is
+ * nullable since the prompt says to omit it when not stated). */
+const ITEMS_SCHEMA = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          product: { type: "string" },
+          quantity: { type: "number" },
+          unit: { anyOf: [{ type: "string" }, { type: "null" }] },
+        },
+        required: ["product", "quantity", "unit"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["items"],
+  additionalProperties: false,
+};
+
 export async function extractLineItemsLight(opts: {
   fileBase64: string;
   mime: string;
   fileName: string;
   model?: string;
 }): Promise<{ items: TakeoffLineItem[]; usage: GenerateResult }> {
-  const usage = await generate({
+  const { data: parsed, ...meta } = await generateStructured<{
+    items?: TakeoffLineItem[];
+  }>({
     model: opts.model,
     effort: "medium",
     system: SYSTEM,
     maxTokens: 3000,
+    schema: ITEMS_SCHEMA,
+    schemaName: "invoice_line_items",
     turns: [
       {
         role: "user",
@@ -44,8 +71,10 @@ export async function extractLineItemsLight(opts: {
       },
     ],
   });
+  // Structured path returns parsed data, not raw text — keep the GenerateResult
+  // shape callers meter against.
+  const usage: GenerateResult = { text: "", ...meta };
 
-  const parsed = extractJson<{ items?: TakeoffLineItem[] }>(usage.text);
   const items = Array.isArray(parsed?.items) ? parsed!.items : [];
   return {
     items: items

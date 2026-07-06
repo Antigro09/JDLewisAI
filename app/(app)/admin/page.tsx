@@ -7,6 +7,7 @@ import { Button, Card, Input, Label, Textarea } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { PLUGINS, getOrgDefaults } from "@/lib/plugins";
 import { getOrgTemplate } from "@/lib/templates/render";
+import { ensureCompanyForUser } from "@/lib/meetings/access";
 import { listAuditLog } from "@/lib/audit";
 import { formatDate } from "@/lib/utils";
 import {
@@ -15,6 +16,7 @@ import {
   setUserRole,
   saveOrgPluginDefaults,
   saveDocumentTemplate,
+  saveMeetingGovernance,
 } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -59,10 +61,11 @@ export default async function AdminPage() {
   ]);
 
   const usageByUser = new Map(usageRows.map((u) => [u.userId, u]));
-  const [orgDefaults, docTemplate, auditEntries] = await Promise.all([
+  const [orgDefaults, docTemplate, auditEntries, company] = await Promise.all([
     getOrgDefaults(),
     getOrgTemplate(),
     listAuditLog(60),
+    ensureCompanyForUser(admin),
   ]);
   const grandTotal = totalRow[0];
   const automationCounts = Object.fromEntries(automationStats.map((r) => [r.status, Number(r.count)]));
@@ -198,6 +201,60 @@ export default async function AdminPage() {
             </label>
           ))}
           <SubmitButton size="sm">Save defaults</SubmitButton>
+        </form>
+      </Card>
+
+      <Card className="p-6">
+        <h2 className="font-semibold text-neutral-900 dark:text-neutral-100">
+          Meeting recording &amp; retention
+        </h2>
+        <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+          Company-wide governance for Meeting Intelligence transcripts and recordings.
+        </p>
+        <form action={saveMeetingGovernance} className="mt-4 space-y-3">
+          <div>
+            <Label htmlFor="transcriptRetentionDays">Transcript retention (days)</Label>
+            <Input
+              id="transcriptRetentionDays"
+              name="transcriptRetentionDays"
+              type="number"
+              min={1}
+              placeholder="Keep forever"
+              defaultValue={company.transcriptRetentionDays ?? ""}
+            />
+            <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+              Leave blank to keep transcripts forever. When set, transcript segments and
+              meeting embeddings older than this are purged by the janitor.
+            </p>
+          </div>
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              name="recordingConsentRequired"
+              defaultChecked={company.recordingConsentRequired}
+              className="mt-1"
+            />
+            <span>
+              <span className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
+                Require recording consent
+              </span>
+              <span className="block text-xs text-neutral-500 dark:text-neutral-400">
+                Users must acknowledge a recording notice before live capture can start;
+                auto-detected meetings wait for the acknowledgement too.
+              </span>
+            </span>
+          </label>
+          <div>
+            <Label htmlFor="recordingConsentText">Consent notice text</Label>
+            <Textarea
+              id="recordingConsentText"
+              name="recordingConsentText"
+              rows={3}
+              defaultValue={company.recordingConsentText ?? ""}
+              placeholder="Shown before capture starts. Leave blank for the default notice."
+            />
+          </div>
+          <SubmitButton size="sm">Save meeting settings</SubmitButton>
         </form>
       </Card>
 

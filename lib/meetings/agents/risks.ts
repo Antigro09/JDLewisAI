@@ -1,5 +1,16 @@
 import type { MeetingRiskType, MeetingPriority } from "@/lib/db/schema";
-import { runAgent, text, riskType, priority, clampConfidence, timestamp, type AgentContext } from "./base";
+import {
+  runAgent,
+  objectSchema,
+  text,
+  riskType,
+  priority,
+  clampConfidence,
+  timestamp,
+  RISK_TYPES,
+  PRIORITIES,
+  type AgentContext,
+} from "./base";
 
 /**
  * Risk agent (spec §11) — also covers the Safety agent's concern by typing
@@ -26,6 +37,20 @@ type Raw = {
   }[];
 };
 
+const schema = objectSchema({
+  risks: {
+    type: "array",
+    items: objectSchema({
+      riskType: { type: "string", enum: RISK_TYPES },
+      description: { type: "string" },
+      severity: { type: "string", enum: PRIORITIES },
+      mitigation: { type: ["string", "null"] },
+      confidence: { type: "integer" },
+      sourceTimestampMs: { type: "number" },
+    }),
+  },
+});
+
 export async function runRiskAgent(ctx: AgentContext): Promise<ExtractedRisk[]> {
   const system = `You are the combined Risk and Safety agent for a general contractor. Identify
 risks raised or implied in the meeting and type each one: safety, schedule, budget, material,
@@ -39,6 +64,7 @@ Return STRICT JSON only: {"risks":[{...}]}.`;
     ctx,
     agent: "risks",
     system,
+    schema,
     maxTokens: 2000,
     user: `Transcript:\n${ctx.transcript}`,
   });

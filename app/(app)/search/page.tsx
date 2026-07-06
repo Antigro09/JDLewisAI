@@ -5,10 +5,23 @@ import { PageShell } from "@/components/page-shell";
 import { Button, Card, Textarea } from "@/components/ui";
 import { Markdown } from "@/components/markdown";
 
+/** Source passage the answer was grounded on (semantic search only). */
+type Citation = {
+  index: number;
+  fileId: string;
+  fileName: string;
+  projectId: string;
+  projectName: string;
+  chunkIndex: number;
+  snippet: string;
+  score: number;
+};
+
 export default function SearchPage() {
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState<string | null>(null);
   const [filesSearched, setFilesSearched] = useState<number | null>(null);
+  const [citations, setCitations] = useState<Citation[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,16 +31,23 @@ export default function SearchPage() {
     setLoading(true);
     setError(null);
     setAnswer(null);
+    setCitations([]);
     try {
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query }),
       });
-      const data = await res.json() as { answer?: string; filesSearched?: number; error?: string };
+      const data = await res.json() as {
+        answer?: string;
+        filesSearched?: number;
+        citations?: Citation[];
+        error?: string;
+      };
       if (!res.ok) throw new Error(data.error ?? "Search failed");
       setAnswer(data.answer ?? "");
       setFilesSearched(data.filesSearched ?? 0);
+      setCitations(data.citations ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");
     } finally {
@@ -68,6 +88,22 @@ export default function SearchPage() {
           <div className="overflow-x-auto">
             <Markdown content={answer} />
           </div>
+          {citations.length > 0 && (
+            <div className="mt-4 border-t border-neutral-200 pt-3">
+              <p className="text-xs font-medium text-neutral-500">Sources</p>
+              <ul className="mt-2 space-y-2">
+                {citations.map((c) => (
+                  <li key={`${c.fileId}-${c.chunkIndex}`} className="text-xs text-neutral-500">
+                    <span className="font-medium text-neutral-700">
+                      [{c.index}] {c.fileName}
+                    </span>
+                    <span> — {c.projectName}</span>
+                    <p className="mt-0.5 text-neutral-400">{c.snippet}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Card>
       )}
 

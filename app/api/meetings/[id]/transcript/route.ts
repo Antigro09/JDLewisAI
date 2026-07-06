@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
+  companies,
   meetingParticipants,
   meetingSessions,
   transcriptSegments,
@@ -31,6 +32,21 @@ export async function POST(
   const { id } = await params;
   const meeting = await getMeetingForUser(user, id);
   if (!meeting) return NextResponse.json({ error: "Meeting not found" }, { status: 404 });
+
+  // Same recording-consent gate as the audio/stream path: storing verbatim
+  // transcript turns is capture too, so it must not proceed while a required
+  // consent acknowledgement is still outstanding.
+  const [company] = await db
+    .select({ recordingConsentRequired: companies.recordingConsentRequired })
+    .from(companies)
+    .where(eq(companies.id, meeting.companyId))
+    .limit(1);
+  if (company?.recordingConsentRequired && !meeting.consentConfirmed) {
+    return NextResponse.json(
+      { error: "Recording consent has not been acknowledged for this meeting." },
+      { status: 403 },
+    );
+  }
 
   let body: Body;
   try {

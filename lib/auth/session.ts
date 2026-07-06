@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
+import { env } from "@/lib/env";
 
 export const SESSION_COOKIE = "session";
 const ALG = "HS256";
@@ -9,12 +10,13 @@ export type SessionClaims = {
   email: string;
   name: string;
   role: "ADMIN" | "MEMBER";
+  // users.tokenVersion at mint time. Verification stays stateless; the
+  // server-side user lookup rejects sessions whose tv is behind the DB.
+  tv: number;
 };
 
 function secret(): Uint8Array {
-  const s = process.env.AUTH_SECRET;
-  if (!s) throw new Error("AUTH_SECRET is not set");
-  return new TextEncoder().encode(s);
+  return new TextEncoder().encode(env.AUTH_SECRET);
 }
 
 export async function createSessionToken(claims: SessionClaims): Promise<string> {
@@ -36,6 +38,9 @@ export async function verifySessionToken(
       email: String(payload.email),
       name: String(payload.name ?? ""),
       role: payload.role === "ADMIN" ? "ADMIN" : "MEMBER",
+      // Missing claim = pre-tokenVersion session; treat as 0 so existing
+      // sessions keep working until the user's version is bumped.
+      tv: typeof payload.tv === "number" ? payload.tv : 0,
     };
   } catch {
     return null;

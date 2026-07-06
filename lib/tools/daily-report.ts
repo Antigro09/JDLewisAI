@@ -1,4 +1,4 @@
-import { generate, extractJson, type GenerateResult } from "@/lib/claude/chat";
+import { generateStructured, type GenerateResult } from "@/lib/claude/chat";
 
 export type DailyReportResult = {
   report: string;
@@ -20,6 +20,16 @@ a well-formatted string (use \\n for newlines). Include sections for:
 Fill in from the provided details; use "None reported" for sections with no info.
 Keep a professional, factual tone.`;
 
+/** Enforced via structured outputs — the report is the whole payload. */
+const REPORT_SCHEMA = {
+  type: "object",
+  properties: {
+    report: { type: "string" },
+  },
+  required: ["report"],
+  additionalProperties: false,
+};
+
 export async function generateDailyReport(opts: {
   reportDate: string;
   projectName?: string;
@@ -37,11 +47,13 @@ export async function generateDailyReport(opts: {
   if (opts.workPerformed) ctx.push(`Work Performed:\n${opts.workPerformed}`);
   if (opts.issues) ctx.push(`Issues / Delays:\n${opts.issues}`);
 
-  const usage = await generate({
+  const { data, ...meta } = await generateStructured<{ report?: string }>({
     model: opts.model,
     effort: opts.effort ?? "medium",
     system: SYSTEM,
     maxTokens: 3000,
+    schema: REPORT_SCHEMA,
+    schemaName: "daily_report",
     turns: [
       {
         role: "user",
@@ -49,8 +61,11 @@ export async function generateDailyReport(opts: {
       },
     ],
   });
+  // Structured path returns parsed data, not raw text — keep the GenerateResult
+  // shape callers meter against.
+  const usage: GenerateResult = { text: "", ...meta };
 
-  const parsed = extractJson<{ report?: string }>(usage.text);
-  const report = parsed?.report ?? usage.text;
+  // Empty only if even generateStructured's fallback ladder produced nothing.
+  const report = typeof data?.report === "string" ? data.report : "";
   return { report, usage };
 }

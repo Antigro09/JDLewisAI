@@ -41,6 +41,7 @@ type Bundle = {
     id: string;
     title: string;
     status: string;
+    consentConfirmed: boolean;
     summary: string | null;
     minutesMarkdown: string | null;
     state?: {
@@ -85,6 +86,12 @@ type Bundle = {
   events: { id: string; type: string; title: string; confidence: number }[];
 };
 
+/** Shown when the company requires consent but hasn't written its own notice. */
+const DEFAULT_CONSENT_TEXT =
+  "This meeting will be recorded and transcribed by ContractorAI Meeting " +
+  "Intelligence. By continuing you confirm that all participants have been " +
+  "informed of, and consent to, the recording.";
+
 function confidenceClass(value: number) {
   if (value >= 80) return "text-green-600 dark:text-green-400";
   if (value >= 55) return "text-amber-600 dark:text-amber-400";
@@ -124,11 +131,15 @@ export function MeetingLiveClient({
   googleConnected = false,
   speakerProfiles = [],
   autoStart = false,
+  consentRequired = false,
+  consentText = null,
 }: {
   initialBundle: Bundle;
   googleConnected?: boolean;
   speakerProfiles?: { id: string; displayName: string }[];
   autoStart?: boolean;
+  consentRequired?: boolean;
+  consentText?: string | null;
 }) {
   const [bundle, setBundle] = useState(initialBundle);
   const [speakerLabel, setSpeakerLabel] = useState("Speaker A");
@@ -142,6 +153,12 @@ export function MeetingLiveClient({
   const [micActive, setMicActive] = useState(false);
   const [systemAudioActive, setSystemAudioActive] = useState(false);
   const [sentAudioBytes, setSentAudioBytes] = useState(0);
+  const [showConsent, setShowConsent] = useState(false);
+  const [consented, setConsented] = useState(initialBundle.meeting.consentConfirmed);
+  // Server truth wins after a refresh; local state covers the acknowledgement
+  // round-trip so capture can start immediately.
+  const consentSatisfied =
+    !consentRequired || consented || bundle.meeting.consentConfirmed;
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const mixerRef = useRef<GainNode | null>(null);
@@ -243,7 +260,7 @@ export function MeetingLiveClient({
     if (!autoStart || autoStartedRef.current) return;
     if (!["active", "processing"].includes(bundle.meeting.status)) return;
     autoStartedRef.current = true;
-    void startLiveTranscription();
+    startLiveTranscription();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStart]);
 
@@ -386,6 +403,12 @@ export function MeetingLiveClient({
   async function addSegment() {
     const content = text.trim();
     if (!content || busy) return;
+    // Storing a transcript turn is capture — respect the same consent gate the
+    // server enforces, so the UI can't post while the notice is unacknowledged.
+    if (!consentSatisfied) {
+      setError("Acknowledge the recording notice before adding transcript turns.");
+      return;
+    }
     setBusy("segment");
     setError(null);
     try {
@@ -429,8 +452,42 @@ export function MeetingLiveClient({
     }
   }
 
-  async function startLiveTranscription() {
+  /**
+   * Button/auto-start entry point: when the company requires recording
+   * consent, surface the notice instead of starting; capture begins from the
+   * acknowledge handler. Otherwise (the default) behavior is unchanged.
+   */
+  function startLiveTranscription() {
     if (busy) return;
+    if (!consentSatisfied) {
+      setShowConsent(true);
+      return;
+    }
+    void beginLiveCapture();
+  }
+
+  async function acknowledgeConsent() {
+    if (busy) return;
+    setBusy("consent");
+    setError(null);
+    try {
+      const res = await fetch(`/api/meetings/${bundle.meeting.id}/consent`, {
+        method: "POST",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Could not record consent");
+      setConsented(true);
+      setShowConsent(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not record consent");
+      setBusy(null);
+      return;
+    }
+    setBusy(null);
+    await beginLiveCapture();
+  }
+
+  async function beginLiveCapture() {
     setBusy("stream-start");
     setError(null);
     try {
@@ -596,6 +653,39 @@ export function MeetingLiveClient({
         </div>
       </div>
 
+      {showConsent && !consentSatisfied && (
+        <Card className="border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950">
+          <div className="flex items-start gap-3">
+            <ShieldAlert
+              size={18}
+              className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400"
+            />
+            <div className="min-w-0">
+              <h2 className="font-medium text-neutral-900 dark:text-neutral-100">
+                Recording consent required
+              </h2>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-neutral-700 dark:text-neutral-200">
+                {consentText?.trim() || DEFAULT_CONSENT_TEXT}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" onClick={acknowledgeConsent} disabled={Boolean(busy)}>
+                  <CheckCircle2 size={15} />
+                  Acknowledge & start capture
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setShowConsent(false)}
+                  disabled={Boolean(busy)}
+                >
+                  Not now
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
           {error}
@@ -753,7 +843,10 @@ export function MeetingLiveClient({
               placeholder="Paste or dictate a finalized transcript turn..."
             />
             <div className="mt-3 flex justify-end">
-              <Button onClick={addSegment} disabled={!text.trim() || Boolean(busy)}>
+              <Button
+                onClick={addSegment}
+                disabled={!text.trim() || Boolean(busy) || !consentSatisfied}
+              >
                 <Send size={16} />
                 Add turn
               </Button>
