@@ -5,18 +5,21 @@ app's visual language (brand orange `#f97316`/`#ea580c`, warm off-white `#fff7ed
 deep charcoal, rounded cards, clean geometric sans) — styled like a modern
 Apple / Claude / Google product ad. Product-focused: no actors, no usage footage.
 
-**Final video — v2 fast-paced cut (1280×720, 30s, continuous voiceover + score):**
-<https://d8j0ntlcm91z4.cloudfront.net/user_3G6RqDndVG2Mizpxv0qQWhGyAIN/hf_20260706_054228_ba287abd-17cb-4b55-ada8-6a2f7a95c040.mp4>
+**Final video — v3 (1280×720, 29.5s):** [`docs/assets/contractorai-promo-v3.mp4`](assets/contractorai-promo-v3.mp4)
 
-v2 replaces the six independently-animated blocks of v1 with two continuous 15-second
-Seedance 2.0 multi-shot takes (three fast-cut shots each, directed by the v1 keyframes
-as references) so the cuts are seamless, the score is continuous, and the voiceover
-runs wall-to-wall with no frozen frames or dead air.
+v3 joins the two continuous 15-second Seedance 2.0 halves with a 0.5s crossfade and
+mixes the two voiceover takes at native speed over the ducked score — rendered
+deterministically with ffmpeg via the `render-promo.yml` GitHub Actions workflow
+(Higgsfield's block assembler compressed 15s blocks to ~10s windows, so the final
+join is done in CI instead).
 
 <details>
-<summary>v1 (slower block-cut version, 1920×1080)</summary>
+<summary>Earlier versions</summary>
 
-<https://d8j0ntlcm91z4.cloudfront.net/user_3G6RqDndVG2Mizpxv0qQWhGyAIN/hf_20260706_051429_05ed3c48-d759-45d9-bd1f-a1f178759c4b.mp4>
+- v2 (Higgsfield block assembly; time-compressed to ~20s — superseded):
+  <https://d8j0ntlcm91z4.cloudfront.net/user_3G6RqDndVG2Mizpxv0qQWhGyAIN/hf_20260706_054228_ba287abd-17cb-4b55-ada8-6a2f7a95c040.mp4>
+- v1 (six independently animated 5s blocks; froze between blocks — superseded):
+  <https://d8j0ntlcm91z4.cloudfront.net/user_3G6RqDndVG2Mizpxv0qQWhGyAIN/hf_20260706_051429_05ed3c48-d759-45d9-bd1f-a1f178759c4b.mp4>
 
 </details>
 
