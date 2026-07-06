@@ -3,6 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/server";
 import { db } from "@/lib/db";
 import { invoices } from "@/lib/db/schema";
+import { Receipt } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { Card, Label, Select } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
@@ -61,7 +62,7 @@ export default async function InvoicesPage() {
 
       <div className="space-y-2">
         {rows.length === 0 && (
-          <p className="text-sm text-neutral-500">No invoices yet.</p>
+          <p className="text-sm text-ember-faint">No invoices yet.</p>
         )}
         {rows.map((inv) => {
           const ex = (inv.extracted ?? {}) as {
@@ -70,16 +71,21 @@ export default async function InvoicesPage() {
             invoiceNumber?: string;
           };
           return (
-            <Link key={inv.id} href={`/invoices/${inv.id}`}>
-              <Card className="flex items-center justify-between gap-3 p-4 transition-colors hover:border-brand-300">
-                <div className="min-w-0">
-                  <div className="truncate font-medium">
-                    {ex.vendor || inv.fileName}
-                    {ex.invoiceNumber ? ` · #${ex.invoiceNumber}` : ""}
-                  </div>
-                  <div className="text-xs text-neutral-400">
-                    {ex.total ? `Total ${ex.total} · ` : ""}
-                    {formatDate(inv.createdAt)}
+            <Link key={inv.id} href={`/invoices/${inv.id}`} className="block">
+              <Card className="flex items-center justify-between gap-3 px-5 py-4 transition-[transform,background] duration-200 ease-ember-out hover:translate-x-1 hover:bg-ember-subtle">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] bg-ember-subtle text-ember-muted">
+                    <Receipt size={18} />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-[14.5px] font-semibold text-ember-text">
+                      {ex.vendor || inv.fileName}
+                      {ex.invoiceNumber ? ` · #${ex.invoiceNumber}` : ""}
+                    </div>
+                    <div className="text-xs text-ember-faint">
+                      {ex.total ? `${ex.total} · ` : ""}
+                      {formatDate(inv.createdAt)}
+                    </div>
                   </div>
                 </div>
                 <span className="shrink-0">

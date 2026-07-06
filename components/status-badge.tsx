@@ -1,19 +1,24 @@
 import type { InvoiceStatus } from "@/lib/db/schema";
 import { cn } from "@/lib/utils";
 
+const SUCCESS = "bg-ember-success-bg text-ember-success";
+const WARNING = "bg-ember-warning-bg text-ember-warning";
+const DANGER = "bg-ember-danger-bg text-ember-danger";
+const PENDING = "bg-ember-pending-bg text-ember-pending";
+
 const STYLES: Record<string, string> = {
-  APPROVED: "bg-green-100 text-green-800 ring-green-300",
-  APPROVED_AS_NOTED: "bg-green-100 text-green-800 ring-green-300",
-  NEEDS_REVIEW: "bg-amber-100 text-amber-800 ring-amber-300",
-  REVISE: "bg-amber-100 text-amber-800 ring-amber-300",
-  SUBMITTED: "bg-amber-100 text-amber-800 ring-amber-300",
-  ANSWERED: "bg-amber-100 text-amber-800 ring-amber-300",
-  DENIED: "bg-red-100 text-red-800 ring-red-300",
-  REJECTED: "bg-red-100 text-red-800 ring-red-300",
-  PENDING: "bg-neutral-100 text-neutral-600 ring-neutral-300",
-  DRAFT: "bg-neutral-100 text-neutral-600 ring-neutral-300",
-  OPEN: "bg-blue-100 text-blue-800 ring-blue-300",
-  CLOSED: "bg-neutral-100 text-neutral-600 ring-neutral-300",
+  APPROVED: SUCCESS,
+  APPROVED_AS_NOTED: SUCCESS,
+  NEEDS_REVIEW: WARNING,
+  REVISE: WARNING,
+  SUBMITTED: WARNING,
+  ANSWERED: WARNING,
+  OPEN: WARNING,
+  DENIED: DANGER,
+  REJECTED: DANGER,
+  PENDING: PENDING,
+  DRAFT: PENDING,
+  CLOSED: PENDING,
 };
 
 const LABELS: Record<string, string> = {
@@ -41,9 +46,9 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full font-semibold uppercase tracking-wide ring-1",
-        STYLES[status] ?? "bg-neutral-100 text-neutral-600 ring-neutral-300",
-        size === "lg" ? "px-3 py-1 text-sm" : "px-2 py-0.5 text-xs",
+        "inline-flex items-center rounded-full font-semibold uppercase tracking-wide",
+        STYLES[status] ?? PENDING,
+        size === "lg" ? "px-3 py-1 text-sm" : "px-2.5 py-0.5 text-[11.5px]",
       )}
     >
       {LABELS[status] ?? status}
@@ -56,14 +61,14 @@ export function StatusStamp({ status }: { status: InvoiceStatus }) {
   if (status === "PENDING") return null;
   const color =
     status === "APPROVED"
-      ? "border-green-600 text-green-600"
+      ? "border-ember-success text-ember-success"
       : status === "DENIED"
-        ? "border-red-600 text-red-600"
-        : "border-amber-600 text-amber-600";
+        ? "border-ember-danger text-ember-danger"
+        : "border-ember-warning text-ember-warning";
   return (
     <div
       className={cn(
-        "pointer-events-none absolute right-3 top-3 -rotate-12 rounded-md border-4 px-3 py-1 text-lg font-extrabold uppercase opacity-80",
+        "pointer-events-none absolute right-3 top-3 -rotate-[9deg] rounded-md border-[3px] px-3 py-1 font-serif text-lg font-bold uppercase tracking-wide opacity-85",
         color,
       )}
     >

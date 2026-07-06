@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { users, usageEvents, automationRuns } from "@/lib/db/schema";
 import { PageShell } from "@/components/page-shell";
 import { Button, Card, Input, Label, Textarea } from "@/components/ui";
+import { AdminStat } from "@/components/admin-stat";
 import { SubmitButton } from "@/components/submit-button";
 import { PLUGINS, getOrgDefaults } from "@/lib/plugins";
 import { getOrgTemplate } from "@/lib/templates/render";
@@ -79,30 +80,29 @@ export default async function AdminPage() {
 
       {/* Cost summary cards */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="p-4">
-          <div className="text-xs uppercase tracking-wide text-neutral-400">Total AI Spend</div>
-          <div className="mt-1 text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-            ${(Number(grandTotal?.totalCost ?? 0) / 100).toFixed(2)}
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs uppercase tracking-wide text-neutral-400">Total Tokens</div>
-          <div className="mt-1 text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-            {(Number(grandTotal?.totalIn ?? 0) + Number(grandTotal?.totalOut ?? 0)).toLocaleString()}
-          </div>
-          <div className="text-xs text-neutral-400">
-            {Number(grandTotal?.totalIn ?? 0).toLocaleString()} in / {Number(grandTotal?.totalOut ?? 0).toLocaleString()} out
-          </div>
-        </Card>
-        <Card className="p-4">
-          <div className="text-xs uppercase tracking-wide text-neutral-400">Automation Runs</div>
-          <div className="mt-1 text-2xl font-bold text-neutral-900 dark:text-neutral-100">
-            {((automationCounts.success ?? 0) + (automationCounts.error ?? 0) + (automationCounts.running ?? 0))}
-          </div>
-          <div className="text-xs text-neutral-400">
-            {automationCounts.success ?? 0} success / {automationCounts.error ?? 0} error
-          </div>
-        </Card>
+        <AdminStat
+          index={0}
+          label="Total AI Spend"
+          value={Number(grandTotal?.totalCost ?? 0) / 100}
+          format="currency"
+        />
+        <AdminStat
+          index={1}
+          label="Total Tokens"
+          value={Number(grandTotal?.totalIn ?? 0) + Number(grandTotal?.totalOut ?? 0)}
+          format="compact"
+          sub={`${Number(grandTotal?.totalIn ?? 0).toLocaleString()} in / ${Number(grandTotal?.totalOut ?? 0).toLocaleString()} out`}
+        />
+        <AdminStat
+          index={2}
+          label="Automation Runs"
+          value={
+            (automationCounts.success ?? 0) +
+            (automationCounts.error ?? 0) +
+            (automationCounts.running ?? 0)
+          }
+          sub={`${automationCounts.success ?? 0} success / ${automationCounts.error ?? 0} error`}
+        />
       </div>
 
       {/* Usage by feature */}

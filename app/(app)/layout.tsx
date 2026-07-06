@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth/server";
 import { Sidebar } from "@/components/sidebar";
 import { ThemeSync } from "@/components/theme-sync";
+import { PageTransition } from "@/components/page-transition";
 import { MeetingAutoStart } from "@/components/meetings/meeting-auto-start";
 
 export default async function AppLayout({
@@ -16,8 +17,8 @@ export default async function AppLayout({
       <Sidebar
         user={{ name: user.name, email: user.email, role: user.role }}
       />
-      <main className="flex-1 overflow-hidden bg-neutral-50 dark:bg-neutral-950">
-        {children}
+      <main className="flex-1 overflow-hidden bg-ember-bg">
+        <PageTransition>{children}</PageTransition>
       </main>
     </div>
   );

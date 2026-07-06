@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { sourceSerif, hankenGrotesk } from "./fonts";
 
 export const metadata: Metadata = {
   title: process.env.NEXT_PUBLIC_APP_NAME || "ContractorAI",
@@ -28,8 +29,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className="bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${sourceSerif.variable} ${hankenGrotesk.variable}`}
+    >
+      <body className="bg-ember-bg font-sans text-ember-text">
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>

@@ -3,38 +3,27 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTheme } from "next-themes";
 import {
   MessageSquare,
   FolderKanban,
-  FileText,
-  Receipt,
-  Map,
-  ShieldAlert,
   Workflow,
   AudioLines,
   Sparkles,
   Settings,
   Users,
   LogOut,
-  HelpCircle,
-  ClipboardList,
-  FilePlus2,
-  Layers,
-  CalendarDays,
-  Scale,
   Search,
-  Camera,
-  Calculator,
-  ChevronDown,
-  ChevronRight,
-  PanelLeftClose,
-  PanelLeft,
+  Sun,
+  Moon,
   Menu,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOutAction } from "@/app/(auth)/actions";
 import { SidebarConversations } from "@/components/sidebar-conversations";
 import { NotificationBell } from "@/components/notification-bell";
+import { CommandPalette } from "@/components/command-palette";
 
 const PRIMARY_NAV = [
   { href: "/chat", label: "Chat", icon: MessageSquare },
@@ -44,25 +33,6 @@ const PRIMARY_NAV = [
   { href: "/customize", label: "Customize", icon: Sparkles },
 ];
 
-const MORE_NAV = [
-  { href: "/scopes", label: "Scopes of Work", icon: FileText },
-  { href: "/invoices", label: "Invoices", icon: Receipt },
-  { href: "/invoice-rollup", label: "Invoice Roll-Up", icon: Layers },
-  { href: "/plans", label: "Plan Reader", icon: Map },
-  { href: "/material-takeoff", label: "Material Takeoff", icon: Scale },
-  { href: "/calculators", label: "Calculators", icon: Calculator },
-  { href: "/capture", label: "Field Capture", icon: Camera },
-  { href: "/eap", label: "Emergency Plan", icon: ShieldAlert },
-  { href: "/rfis", label: "RFIs", icon: HelpCircle },
-  { href: "/submittals", label: "Submittal Log", icon: ClipboardList },
-  { href: "/changes", label: "Change Orders", icon: FilePlus2 },
-  { href: "/reports", label: "Daily Reports", icon: CalendarDays },
-  { href: "/bids", label: "Bid Comparison", icon: Scale },
-  { href: "/search", label: "Project Search", icon: Search },
-];
-
-const COLLAPSE_KEY = "sidebar-collapsed";
-
 export function Sidebar({
   user,
 }: {
@@ -70,27 +40,19 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const appName = process.env.NEXT_PUBLIC_APP_NAME || "ContractorAI";
-  const [collapsed, setCollapsed] = useState(false);
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(() =>
-    MORE_NAV.some((i) => pathname.startsWith(i.href)),
-  );
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [themeSpin, setThemeSpin] = useState(0);
 
-  useEffect(() => {
-    const stored = window.localStorage.getItem(COLLAPSE_KEY);
-    if (stored === "1") setCollapsed(true);
-  }, []);
+  useEffect(() => setMounted(true), []);
+  useEffect(() => setMobileOpen(false), [pathname]);
 
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
-
-  function toggleCollapsed() {
-    setCollapsed((prev) => {
-      const next = !prev;
-      window.localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
-      return next;
-    });
+  const dark = mounted && resolvedTheme === "dark";
+  function toggleTheme() {
+    setTheme(dark ? "light" : "dark");
+    setThemeSpin((n) => n + 1);
   }
 
   const isActive = (href: string) =>
@@ -98,23 +60,50 @@ export function Sidebar({
 
   const isChat = pathname.startsWith("/chat");
   const initial = user.name.trim().charAt(0).toUpperCase() || "?";
-  const showLabels = !collapsed || mobileOpen; // drawer is always expanded
+
+  const navRow = (
+    href: string,
+    label: string,
+    Icon: LucideIcon,
+    active: boolean,
+  ) => (
+    <Link
+      key={href}
+      href={href}
+      className={cn(
+        "group flex items-center gap-3 rounded-[14px] px-[13px] py-[9px] text-sm transition-colors duration-200",
+        active
+          ? "bg-ember-tint font-semibold text-ember-tint-text"
+          : "font-medium text-ember-muted hover:bg-ember-subtle",
+      )}
+    >
+      <Icon
+        size={19}
+        className={cn(
+          "shrink-0 transition-transform duration-200 ease-ember-spring",
+          !active && "group-hover:-rotate-6 group-hover:scale-110",
+        )}
+      />
+      {label}
+    </Link>
+  );
 
   return (
     <>
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-neutral-200 bg-white px-4 pt-[env(safe-area-inset-top)] dark:border-neutral-800 dark:bg-neutral-900 lg:hidden">
+      {/* Mobile top bar */}
+      <header className="flex h-[60px] shrink-0 items-center gap-3 border-b border-ember-border bg-ember-surface/80 px-4 pt-[env(safe-area-inset-top)] backdrop-blur-xl lg:hidden">
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
           aria-label="Open menu"
-          className="rounded-lg p-1.5 text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          className="rounded-lg p-1.5 text-ember-muted transition-colors hover:bg-ember-subtle"
         >
           <Menu size={20} />
         </button>
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 font-bold text-white">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-ember-accent-solid font-serif font-bold text-white">
           C
-        </div>
-        <span className="flex-1 truncate font-semibold text-neutral-900 dark:text-neutral-100">
+        </span>
+        <span className="flex-1 truncate font-semibold text-ember-text">
           {appName}
         </span>
         <NotificationBell />
@@ -129,141 +118,101 @@ export function Sidebar({
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex h-dvh w-64 shrink-0 -translate-x-full flex-col border-r border-neutral-200 bg-white transition-transform dark:border-neutral-800 dark:bg-neutral-900",
-          "lg:static lg:z-auto lg:translate-x-0 lg:transition-[width]",
+          "fixed inset-y-0 left-0 z-40 flex h-dvh w-[264px] shrink-0 -translate-x-full flex-col border-r border-ember-border bg-ember-surface transition-transform duration-300 ease-ember-drawer",
+          "lg:static lg:z-auto lg:w-[248px] lg:translate-x-0",
           mobileOpen && "translate-x-0",
-          collapsed ? "lg:w-16" : "lg:w-64",
         )}
       >
-        <div
-          className={cn(
-            "py-4",
-            showLabels
-              ? "flex items-center gap-2 px-4"
-              : "flex flex-col items-center gap-2 px-2",
-          )}
-        >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 font-bold text-white">
+        {/* Logo row */}
+        <div className="flex items-center gap-2 px-4 py-4">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-ember-accent-solid font-serif text-[17px] font-bold text-white">
             C
-          </div>
-          {showLabels && (
-            <span className="flex-1 truncate font-semibold text-neutral-900 dark:text-neutral-100">
-              {appName}
-            </span>
-          )}
-          {showLabels && <NotificationBell />}
+          </span>
+          <span className="flex-1 truncate text-[16px] font-semibold text-ember-text">
+            {appName}
+          </span>
+          <NotificationBell />
           <button
             type="button"
-            onClick={toggleCollapsed}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="hidden rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 lg:block"
+            onClick={toggleTheme}
+            title="Toggle theme"
+            aria-label="Toggle theme"
+            className="flex shrink-0 rounded-full bg-ember-pill p-[7px] text-ember-faint transition-colors hover:text-ember-muted"
           >
-            {collapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+            <span
+              key={themeSpin}
+              style={{
+                animation:
+                  themeSpin > 0
+                    ? "emb-bounce-pop .45s cubic-bezier(0.34,1.56,0.64,1)"
+                    : undefined,
+                display: "flex",
+              }}
+            >
+              {dark ? <Sun size={15} /> : <Moon size={15} />}
+            </span>
           </button>
         </div>
 
-        <nav className="space-y-1 px-2">
-          {PRIMARY_NAV.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              title={showLabels ? undefined : label}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                isActive(href)
-                  ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
-                  : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
-              )}
-            >
-              <Icon size={18} />
-              {showLabels && label}
-            </Link>
-          ))}
+        {/* Find a tool… — opens the command palette */}
+        <div className="px-2 pb-1">
+          <button
+            type="button"
+            onClick={() => setPaletteOpen(true)}
+            className="flex w-full items-center gap-2 rounded-full border border-ember-border bg-ember-subtle/60 px-3.5 py-2 text-sm text-ember-faint transition-colors hover:bg-ember-subtle"
+          >
+            <Search size={16} className="shrink-0" />
+            <span className="flex-1 text-left">Find a tool…</span>
+            <kbd className="rounded-md border border-ember-border px-1.5 py-0.5 text-[10.5px] font-medium">
+              ⌘K
+            </kbd>
+          </button>
+        </div>
 
-          {showLabels && (
-            <div>
-              <button
-                type="button"
-                onClick={() => setMoreOpen((o) => !o)}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
-              >
-                {moreOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                More
-              </button>
-              {moreOpen && (
-                <div className="max-h-64 space-y-0.5 overflow-y-auto pl-2">
-                  {MORE_NAV.map(({ href, label, icon: Icon }) => (
-                    <Link
-                      key={href}
-                      href={href}
-                      className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-1.5 text-sm transition-colors",
-                        isActive(href)
-                          ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
-                          : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
-                      )}
-                    >
-                      <Icon size={16} />
-                      {label}
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {user.role === "ADMIN" && (
-            <Link
-              href="/admin"
-              title={showLabels ? undefined : "Admin"}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                isActive("/admin")
-                  ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
-                  : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
-              )}
-            >
-              <Users size={18} />
-              {showLabels && "Admin"}
-            </Link>
+        <nav className="space-y-1 px-2 pt-1">
+          {PRIMARY_NAV.map(({ href, label, icon }) =>
+            navRow(href, label, icon, isActive(href)),
           )}
         </nav>
 
-        {showLabels && isChat && <SidebarConversations />}
-        {(!showLabels || !isChat) && <div className="flex-1" />}
+        {isChat ? <SidebarConversations /> : <div className="flex-1" />}
 
-        <div className="border-t border-neutral-200 p-3 dark:border-neutral-800">
-          <Link
-            href="/settings"
-            className="mb-2 flex items-center gap-2 rounded-lg px-1 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-          >
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-xs font-semibold text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200">
+        {/* Secondary group */}
+        <nav className="space-y-1 border-t border-ember-border px-2 pt-2">
+          {user.role === "ADMIN" &&
+            navRow("/admin", "Admin", Users, isActive("/admin"))}
+          {navRow("/settings", "Settings", Settings, isActive("/settings"))}
+        </nav>
+
+        {/* User footer */}
+        <div className="p-3">
+          <div className="flex items-center gap-2 rounded-[14px] bg-ember-subtle/50 px-1.5 py-1.5">
+            <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-full bg-ember-tint text-[13px] font-semibold text-ember-tint-text">
               {initial}
-            </div>
-            {showLabels && (
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-neutral-800 dark:text-neutral-100">
-                  {user.name}
-                </div>
-                <div className="truncate text-xs text-neutral-500 dark:text-neutral-400">
-                  {user.role === "ADMIN" ? "Admin" : "Member"}
-                </div>
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium text-ember-text">
+                {user.name}
               </div>
-            )}
-            <Settings size={16} className="shrink-0 text-neutral-400" />
-          </Link>
-          <form action={signOutAction}>
-            <button
-              type="submit"
-              title={showLabels ? undefined : "Sign out"}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
-            >
-              <LogOut size={16} />
-              {showLabels && "Sign out"}
-            </button>
-          </form>
+              <div className="truncate text-xs text-ember-faint">
+                {user.role === "ADMIN" ? "Admin" : "Member"}
+              </div>
+            </div>
+            <form action={signOutAction} className="shrink-0">
+              <button
+                type="submit"
+                title="Sign out"
+                aria-label="Sign out"
+                className="flex rounded-lg p-1.5 text-ember-faint transition-colors hover:bg-ember-subtle hover:text-ember-danger"
+              >
+                <LogOut size={16} />
+              </button>
+            </form>
+          </div>
         </div>
       </aside>
+
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </>
   );
 }
