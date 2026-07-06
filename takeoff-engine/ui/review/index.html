@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Takeoff Review</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { margin: 0; display: grid; grid-template-columns: 1fr 380px; height: 100vh; }
+  #viewer { position: relative; overflow: auto; background: #f3f4f6; }
+  #stage { position: relative; transform-origin: top left; }
+  #stage img { display: block; width: 100%; }
+  #overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #panel { border-left: 1px solid #d1d5db; overflow: auto; padding: 12px; background: Canvas; }
+  h1 { font-size: 15px; margin: 4px 0 10px; }
+  select { width: 100%; margin-bottom: 8px; padding: 5px; }
+  .item { border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; cursor: pointer; font-size: 13px; }
+  .item.review { border-color: #d97706; background: color-mix(in srgb, #fbbf24 12%, Canvas); }
+  .item.sel { outline: 2px solid #2563eb; }
+  .qty { font-weight: 700; font-size: 15px; }
+  .formula { font-family: ui-monospace, monospace; font-size: 11px; opacity: .75; word-break: break-all; margin: 4px 0; }
+  .reasons { color: #b45309; font-size: 11px; }
+  .badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: #6b7280; color: #fff; margin-left: 6px; }
+  .badge.accepted { background: #16a34a; } .badge.rejected { background: #dc2626; } .badge.edited { background: #2563eb; }
+  button { margin: 4px 4px 0 0; padding: 4px 10px; border-radius: 6px; border: 1px solid #9ca3af; background: Canvas; cursor: pointer; font-size: 12px; }
+  button:hover { background: #e5e7eb; }
+  polygon, rect.f { fill-opacity: .25; cursor: pointer; }
+  .muted { opacity: .6; font-size: 12px; }
+</style>
+</head>
+<body>
+  <div id="viewer"><div id="stage"><img id="page" alt="sheet"><svg id="overlay"></svg></div></div>
+  <div id="panel">
+    <h1>Takeoff Review</h1>
+    <select id="projects"></select>
+    <select id="sheets"></select>
+    <div class="muted" id="scaleinfo"></div>
+    <div id="items"></div>
+  </div>
+<script>
+const $ = (s) => document.querySelector(s);
+let overlayData = null, selected = null;
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function loadProjects() {
+  const projects = await api('/api/projects');
+  $('#projects').innerHTML = projects.map(p => `<option value="${p.id}">${p.name} (${p.status})</option>`).join('') || '<option>no projects</option>';
+  if (projects.length) loadSheets(projects[0].id);
+}
+
+async function loadSheets(projectId) {
+  const sheets = await api(`/api/projects/${projectId}/sheets`);
+  $('#sheets').innerHTML = sheets.map(s => `<option value="${s.id}">p.${s.page_number} ${s.sheet_number || ''} [${s.sheet_type}]</option>`).join('') || '<option>no sheets — run /process</option>';
+  if (sheets.length) loadSheet(sheets[0].id);
+}
+
+async function loadSheet(sheetId) {
+  $('#page').src = `/api/sheets/${sheetId}/image`;
+  overlayData = await api(`/api/sheets/${sheetId}/overlay`);
+  const sc = overlayData.scale;
+  $('#scaleinfo').textContent = sc
+    ? `scale: ${sc.scale_text || sc.source} (source ${sc.source}, conf ${(sc.confidence ?? 0).toFixed(2)})`
+    : 'no scale calibration';
+  render();
+}
+
+function render() {
+  const { width_pt, height_pt, features } = overlayData;
+  const svg = $('#overlay');
+  svg.setAttribute('viewBox', `0 0 ${width_pt} ${height_pt}`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.innerHTML = features.map((f, i) => {
+    const st = f.style || {}; const stroke = st.stroke || '#2563eb'; const fill = st.fill || stroke;
+    const shapes = [
+      ...f.polygons.map(p => `<polygon data-i="${i}" points="${p.map(pt => pt.join(',')).join(' ')}" stroke="${stroke}" fill="${fill}" stroke-width="${(st.stroke_width || 1.5)}" ${selected === i ? 'stroke-width="4"' : ''}/>`),
+      ...f.boxes.map(b => `<rect class="f" data-i="${i}" x="${b[0]}" y="${b[1]}" width="${b[2]-b[0]}" height="${b[3]-b[1]}" stroke="${stroke}" fill="${fill}"/>`),
+    ];
+    return shapes.join('');
+  }).join('');
+  svg.querySelectorAll('[data-i]').forEach(el => el.onclick = () => select(+el.dataset.i));
+
+  $('#items').innerHTML = features.map((f, i) => `
+    <div class="item ${f.needs_review ? 'review' : ''} ${selected === i ? 'sel' : ''}" data-i="${i}">
+      <div><span class="qty">${f.quantity} ${f.unit}</span> — ${f.description}
+        <span class="badge ${f.review_status}">${f.review_status}</span></div>
+      <div class="formula">${f.formula}</div>
+      ${f.review_reason.length ? `<div class="reasons">⚠ ${f.review_reason.join(', ')}</div>` : ''}
+      <div class="muted">confidence ${f.final_confidence.toFixed(2)}</div>
+      <div>
+        <button onclick="review('${f.quantity_id}','accept')">Accept</button>
+        <button onclick="editQty('${f.quantity_id}', ${f.quantity})">Edit</button>
+        <button onclick="review('${f.quantity_id}','reject')">Reject</button>
+      </div>
+    </div>`).join('') || '<div class="muted">no quantities on this sheet</div>';
+  document.querySelectorAll('.item').forEach(el => el.onclick = (e) => {
+    if (e.target.tagName !== 'BUTTON') select(+el.dataset.i);
+  });
+}
+
+function select(i) { selected = i; render(); }
+
+async function review(id, action, extra = {}) {
+  await api(`/api/quantities/${id}/review`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, reviewer: 'review-ui', ...extra }),
+  });
+  loadSheet($('#sheets').value);
+}
+
+function editQty(id, current) {
+  const v = prompt('Corrected quantity:', current);
+  if (v === null) return;
+  const n = parseFloat(v);
+  if (Number.isNaN(n)) return alert('not a number');
+  review(id, 'edit', { corrected_quantity: n, comment: 'edited via review UI' });
+}
+
+$('#projects').onchange = e => loadSheets(e.target.value);
+$('#sheets').onchange = e => loadSheet(e.target.value);
+loadProjects().catch(e => $('#items').textContent = e.message);
+</script>
+</body>
+</html>
