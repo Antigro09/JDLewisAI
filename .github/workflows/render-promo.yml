@@ -2,6 +2,11 @@ name: Render promo video v3
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - claude/contractorai-promo-video-a56a2o
+    paths:
+      - ".github/workflows/render-promo.yml"
 
 permissions:
   contents: write
