@@ -1,0 +1,70 @@
+# Dev stack. Default: API + Postgres (mock adapters, local worker).
+#   docker compose up api
+# Optional profiles:
+#   --profile queue   → Redis + RQ worker (set TAKEOFF_JOB_QUEUE=rq)
+#   --profile s3      → MinIO for future S3-backed storage
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: takeoff
+      POSTGRES_PASSWORD: takeoff
+      POSTGRES_DB: takeoff
+    ports:
+      - "5433:5432"
+    volumes:
+      - takeoff-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U takeoff"]
+      interval: 3s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      TAKEOFF_DATABASE_URL: postgresql+psycopg://takeoff:takeoff@db:5432/takeoff
+      TAKEOFF_STORAGE_ROOT: /data
+    volumes:
+      - takeoff-files:/data
+    ports:
+      - "8000:8000"
+
+  redis:
+    image: redis:7-alpine
+    profiles: [queue]
+    ports:
+      - "6379:6379"
+
+  worker:
+    build: .
+    profiles: [queue]
+    command: rq worker takeoff --url redis://redis:6379/0
+    depends_on: [db, redis]
+    environment:
+      TAKEOFF_DATABASE_URL: postgresql+psycopg://takeoff:takeoff@db:5432/takeoff
+      TAKEOFF_STORAGE_ROOT: /data
+      TAKEOFF_JOB_QUEUE: rq
+      TAKEOFF_REDIS_URL: redis://redis:6379/0
+    volumes:
+      - takeoff-files:/data
+
+  minio:
+    image: minio/minio
+    profiles: [s3]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: takeoff
+      MINIO_ROOT_PASSWORD: takeoff-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - takeoff-minio:/data
+
+volumes:
+  takeoff-db:
+  takeoff-files:
+  takeoff-minio:

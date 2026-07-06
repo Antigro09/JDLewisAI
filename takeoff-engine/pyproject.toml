@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "takeoff-engine"
+version = "0.1.0"
+description = "Open-source-model construction material takeoff engine: blueprint PDFs/TIFFs in, auditable quantities with overlays and Excel/JSON out."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.1",
+    "python-multipart>=0.0.9",
+    "pymupdf>=1.24",          # AGPL — see README licensing note; pdf_pdfium.py is the permissive fallback path
+    "pillow>=10.0",
+    "opencv-python-headless>=4.9",
+    "shapely>=2.0",
+    "numpy>=1.26",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+# Real model backends — each is optional so the core app runs with mock adapters only.
+ocr = ["paddleocr>=2.7", "paddlepaddle>=2.6"]
+detect = ["rfdetr>=1.0", "torch>=2.2", "torchvision>=0.17"]
+segment = ["sam2>=1.0", "torch>=2.2"]
+vlm = ["openai>=1.30"]                 # OpenAI-compatible client for vLLM/TGI-hosted Qwen/Llama
+sagemaker = ["boto3>=1.34"]
+pdf-fallback = ["pypdfium2>=4.28", "pdfplumber>=0.11"]
+worker = ["rq>=1.16", "redis>=5.0"]
+dev = ["pytest>=8.0", "httpx>=0.27", "ruff>=0.4"]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+# E501: line length is advisory; B008: FastAPI's Depends-in-default idiom;
+# UP042: keep (str, Enum) — values serialize identically and stay explicit.
+ignore = ["E501", "B008", "UP042"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
