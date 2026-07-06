@@ -34,9 +34,9 @@ jobs:
           ffmpeg -y \
             -i halfA.mp4 -i halfB.mp4 -i voA.wav -i voB.wav \
             -filter_complex "\
-              [0:v]fps=30,format=yuv420p[v0]; \
-              [1:v]fps=30,format=yuv420p[v1]; \
-              [v0][v1]xfade=transition=fade:duration=0.5:offset=14.5[v]; \
+              [0:v]fps=30[v0]; \
+              [1:v]fps=30[v1]; \
+              [v0][v1]xfade=transition=fade:duration=0.5:offset=14.5,format=yuv420p[v]; \
               [0:a]aresample=48000,aformat=channel_layouts=stereo[m0]; \
               [1:a]aresample=48000,aformat=channel_layouts=stereo[m1]; \
               [m0][m1]acrossfade=d=0.5:c1=tri:c2=tri,volume=0.35[music]; \
