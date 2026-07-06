@@ -11,7 +11,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronLeft,
-  Wrench,
+  Zap,
   ExternalLink,
   AlertTriangle,
   Sparkles,
@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { Markdown } from "@/components/markdown";
 import { Button, Card, Spinner, Textarea } from "@/components/ui";
+import { EmberThinking } from "@/components/ember-thinking";
 import { cn } from "@/lib/utils";
 import { REASONING_MODES } from "@/lib/claude/modes";
 import { switchBranch, deleteMessage } from "@/app/(app)/chat/branch-actions";
@@ -113,17 +114,17 @@ function ThinkingBlock({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   if (!text) return null;
   return (
-    <div className="mb-2 rounded-lg border border-neutral-200 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800">
+    <div className="mb-2.5 inline-block w-full rounded-[14px] bg-ember-subtle">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-neutral-500 dark:text-neutral-400"
+        className="flex w-full items-center gap-2 px-3 py-2 text-[13px] font-medium text-ember-muted"
       >
         {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        <Brain size={14} />
-        Thinking
+        <Brain size={14} className="text-ember-accent" />
+        Thought process
       </button>
       {open && (
-        <div className="whitespace-pre-wrap px-3 pb-3 text-xs text-neutral-500 dark:text-neutral-400">
+        <div className="whitespace-pre-wrap px-3 pb-3 text-[13px] text-ember-muted">
           {text}
         </div>
       )}
@@ -139,20 +140,24 @@ function ActivityList({ activities }: { activities?: Activity[] }) {
         <div
           key={i}
           className={cn(
-            "flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs",
+            "flex items-center gap-2.5 rounded-[14px] px-3 py-2 text-[13px]",
             a.isError
-              ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
-              : "border-neutral-200 bg-neutral-50 text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400",
+              ? "bg-ember-danger-bg text-ember-danger"
+              : "bg-ember-subtle text-ember-muted",
           )}
         >
-          {a.isError ? <AlertTriangle size={13} /> : <Wrench size={13} />}
+          {a.isError ? (
+            <AlertTriangle size={14} className="shrink-0" />
+          ) : (
+            <Zap size={14} className="shrink-0 text-ember-accent" fill="currentColor" />
+          )}
           <span className="flex-1">{a.summary}</span>
           {a.link && (
             <a
               href={a.link}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 font-medium text-brand-600 hover:underline dark:text-brand-400"
+              className="inline-flex items-center gap-1 font-semibold text-ember-accent hover:underline"
             >
               Open <ExternalLink size={12} />
             </a>
@@ -1301,8 +1306,8 @@ export function ChatClient({
                     <div
                       className={cn(
                         m.role === "user"
-                          ? "rounded-2xl bg-brand-600 px-4 py-2.5 text-white"
-                          : "text-neutral-900 dark:text-neutral-100",
+                          ? "rounded-[22px_22px_6px_22px] bg-ember-accent-solid px-[18px] py-3 text-[15px] text-white shadow-ember-bubble"
+                          : "text-[16px] leading-[1.7] text-ember-text",
                       )}
                     >
                       {m.role === "assistant" && <ThinkingBlock text={m.thinking ?? ""} />}
@@ -1321,9 +1326,13 @@ export function ChatClient({
                       ) : m.text ? (
                         <Markdown content={m.text} />
                       ) : m.streaming ? (
-                        <div className="flex items-center gap-2 text-neutral-400">
-                          <Spinner /> Working…
-                        </div>
+                        <EmberThinking
+                          label={
+                            m.activities && m.activities.length > 0
+                              ? "Checking project context"
+                              : "Thinking"
+                          }
+                        />
                       ) : null}
                     </div>
                   )}
@@ -1539,15 +1548,15 @@ export function ChatClient({
             </div>
           )}
 
-          <div className="rounded-3xl border border-neutral-300 bg-white px-3 pb-2 pt-3 shadow-sm transition-colors focus-within:border-brand-400 dark:border-neutral-700 dark:bg-neutral-900 dark:focus-within:border-brand-600">
+          <div className="rounded-[28px] border border-ember-border bg-ember-surface/80 px-3.5 pb-2 pt-3.5 shadow-ember-composer backdrop-blur-xl transition-shadow focus-within:border-ember-accent focus-within:shadow-[var(--ember-glow-ring),var(--ember-shadow-composer)]">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
               onPaste={onComposerPaste}
               rows={1}
-              placeholder="Message ContractorAI…"
-              className="max-h-48 w-full resize-none bg-transparent px-1 text-sm outline-none placeholder:text-neutral-400 dark:text-neutral-100"
+              placeholder="Ask ContractorAI anything…"
+              className="max-h-48 w-full resize-none bg-transparent px-1 text-[15px] text-ember-text outline-none placeholder:text-ember-faint"
             />
 
             <input

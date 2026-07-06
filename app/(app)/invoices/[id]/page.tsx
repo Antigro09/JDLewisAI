@@ -4,11 +4,13 @@ import { eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/server";
 import { db } from "@/lib/db";
 import { invoices } from "@/lib/db/schema";
+import { Sparkles } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
-import { Button, Card, Label, Textarea } from "@/components/ui";
+import { Button, Card } from "@/components/ui";
 import { StatusBadge, StatusStamp } from "@/components/status-badge";
+import { InvoiceReviewActions } from "@/components/invoice-review-actions";
 import type { InvoiceExtraction } from "@/lib/tools/invoice";
-import { setInvoiceStatus, deleteInvoice } from "../actions";
+import { deleteInvoice } from "../actions";
 import { formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -17,10 +19,10 @@ function Field({ label, value }: { label: string; value?: string | number }) {
   if (value === undefined || value === "" || value === null) return null;
   return (
     <div>
-      <div className="text-xs uppercase tracking-wide text-neutral-400">
+      <div className="text-xs uppercase tracking-wide text-ember-faint">
         {label}
       </div>
-      <div className="text-sm text-neutral-800 dark:text-neutral-200">{String(value)}</div>
+      <div className="text-sm text-ember-text">{String(value)}</div>
     </div>
   );
 }
@@ -131,56 +133,28 @@ export default async function InvoiceDetailPage({
           </Card>
 
           {(ex.recommendation || (ex.flags && ex.flags.length > 0)) && (
-            <Card className="p-5">
-              <h3 className="mb-2 font-semibold">AI recommendation</h3>
+            <div className="rounded-[18px] bg-ember-tint p-5">
+              <h3 className="mb-2 flex items-center gap-2 font-semibold text-ember-tint-text">
+                <Sparkles size={16} fill="currentColor" />
+                AI recommendation
+              </h3>
               {ex.recommendation && (
-                <p className="text-sm">
-                  <span className="font-medium">{ex.recommendation}</span>
+                <p className="text-sm text-ember-tint-text">
+                  <span className="font-semibold">{ex.recommendation}</span>
                   {ex.recommendationReason ? ` — ${ex.recommendationReason}` : ""}
                 </p>
               )}
               {ex.flags && ex.flags.length > 0 && (
-                <ul className="mt-2 list-disc pl-5 text-sm text-amber-700">
+                <ul className="mt-2 list-disc pl-5 text-sm text-ember-tint-text">
                   {ex.flags.map((f, i) => (
                     <li key={i}>{f}</li>
                   ))}
                 </ul>
               )}
-            </Card>
+            </div>
           )}
 
-          <Card className="p-5">
-            <h3 className="mb-3 font-semibold">Review</h3>
-            <form className="space-y-3">
-              <div>
-                <Label htmlFor="note">Note (optional)</Label>
-                <Textarea id="note" name="note" rows={2} />
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="submit"
-                  formAction={setInvoiceStatus.bind(null, inv.id, "APPROVED")}
-                  className="bg-green-600 hover:bg-green-700"
-                >
-                  Approve
-                </Button>
-                <Button
-                  type="submit"
-                  formAction={setInvoiceStatus.bind(null, inv.id, "NEEDS_REVIEW")}
-                  className="bg-amber-600 hover:bg-amber-700"
-                >
-                  Needs Review
-                </Button>
-                <Button
-                  type="submit"
-                  formAction={setInvoiceStatus.bind(null, inv.id, "DENIED")}
-                  variant="danger"
-                >
-                  Deny
-                </Button>
-              </div>
-            </form>
-          </Card>
+          <InvoiceReviewActions invoiceId={inv.id} />
 
           {history.length > 0 && (
             <Card className="p-5">

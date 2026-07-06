@@ -9,21 +9,22 @@ export const Button = React.forwardRef<
   }
 >(({ className, variant = "primary", size = "md", ...props }, ref) => {
   const variants: Record<string, string> = {
-    primary: "bg-brand-600 text-white hover:bg-brand-700 disabled:bg-brand-300",
+    primary:
+      "bg-ember-accent-solid text-white shadow-ember-bubble hover:brightness-105 disabled:opacity-60",
     secondary:
-      "border border-neutral-300 bg-white text-neutral-800 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:hover:bg-neutral-800",
-    ghost: "text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
-    danger: "bg-red-600 text-white hover:bg-red-700",
+      "border border-ember-border bg-ember-surface text-ember-text hover:bg-ember-subtle",
+    ghost: "text-ember-muted hover:bg-ember-subtle",
+    danger: "bg-ember-danger text-white hover:brightness-105",
   };
   const sizes: Record<string, string> = {
-    sm: "h-8 px-3 text-sm",
-    md: "h-10 px-4 text-sm",
+    sm: "h-8 px-3.5 text-[13.5px]",
+    md: "h-10 px-5 text-sm",
   };
   return (
     <button
       ref={ref}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-70",
+        "inline-flex items-center justify-center gap-2 rounded-full font-semibold transition-[background,transform,filter] duration-150 ease-ember-spring active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-70",
         variants[variant],
         sizes[size],
         className,
@@ -41,7 +42,7 @@ export const Input = React.forwardRef<
   <input
     ref={ref}
     className={cn(
-      "h-10 w-full rounded-lg border border-neutral-300 bg-white px-3 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100",
+      "h-10 w-full rounded-xl border border-ember-border bg-ember-bg px-3.5 text-sm text-ember-text outline-none transition-shadow placeholder:text-ember-faint focus:border-ember-accent focus:ring-2 focus:ring-brand-500/20",
       className,
     )}
     {...props}
@@ -56,7 +57,7 @@ export const Textarea = React.forwardRef<
   <textarea
     ref={ref}
     className={cn(
-      "w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100",
+      "w-full rounded-xl border border-ember-border bg-ember-bg px-3.5 py-2.5 text-sm text-ember-text outline-none transition-shadow placeholder:text-ember-faint focus:border-ember-accent focus:ring-2 focus:ring-brand-500/20",
       className,
     )}
     {...props}
@@ -71,7 +72,7 @@ export const Select = React.forwardRef<
   <select
     ref={ref}
     className={cn(
-      "h-9 rounded-lg border border-neutral-300 bg-white px-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100",
+      "h-9 rounded-xl border border-ember-border bg-ember-bg px-2.5 text-sm text-ember-text outline-none focus:border-ember-accent focus:ring-2 focus:ring-brand-500/20",
       className,
     )}
     {...props}
@@ -88,7 +89,7 @@ export function Label({
   return (
     <label
       className={cn(
-        "mb-1 block text-sm font-medium text-neutral-700 dark:text-neutral-300",
+        "mb-1 block text-sm font-medium text-ember-muted",
         className,
       )}
       {...props}
@@ -103,7 +104,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900",
+        "rounded-[18px] border border-ember-border bg-ember-surface shadow-ember-card",
         className,
       )}
       {...props}
@@ -134,7 +135,7 @@ export function Spinner({ className }: { className?: string }) {
   return (
     <span
       className={cn(
-        "inline-block h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-brand-600",
+        "inline-block h-4 w-4 animate-spin rounded-full border-2 border-ember-border border-t-ember-accent",
         className,
       )}
     />

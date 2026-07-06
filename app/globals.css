@@ -3,7 +3,69 @@
 @tailwind utilities;
 
 :root {
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Body/UI font = Hanken Grotesk (loaded via next/font in the root layout). */
+  --font-sans: var(--font-hanken), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+
+  /* ---- Ember design tokens (light) — oklch args, space-separated so Tailwind
+   * can compose alpha via `oklch(var(--x) / <alpha-value>)`. ---- */
+  --ember-bg: 0.97 0.008 60;
+  --ember-surface: 0.995 0.004 60;
+  --ember-subtle: 0.94 0.014 55;
+  --ember-border: 0.885 0.015 50;
+  --ember-text: 0.24 0.02 45;
+  --ember-text-muted: 0.46 0.025 45;
+  --ember-text-faint: 0.62 0.02 50;
+  --ember-accent-solid: 0.6 0.15 40;
+  --ember-accent: 0.55 0.16 38;
+  --ember-accent-tint: 0.93 0.04 50;
+  --ember-accent-tint-text: 0.45 0.14 35;
+  --ember-pill: 0.93 0.012 55;
+  /* status */
+  --ember-success: 0.58 0.13 150;
+  --ember-success-bg: 0.92 0.05 150;
+  --ember-warning: 0.68 0.14 70;
+  --ember-warning-bg: 0.93 0.06 80;
+  --ember-danger: 0.56 0.18 22;
+  --ember-danger-bg: 0.93 0.05 22;
+  --ember-pending: 0.62 0.02 50;
+  --ember-pending-bg: 0.92 0.008 50;
+  /* shadows (full strings) */
+  --ember-shadow-card: 0 2px 12px rgba(80, 50, 20, 0.06);
+  --ember-shadow-card-hover: 0 18px 38px rgba(90, 55, 20, 0.18);
+  --ember-shadow-composer: 0 8px 30px rgba(90, 55, 20, 0.08);
+  --ember-shadow-palette: 0 24px 70px rgba(60, 30, 10, 0.25);
+  --ember-glow-ring: 0 0 0 3px oklch(0.6 0.15 40 / 0.22);
+  --ember-shadow-bubble: 0 4px 14px oklch(0.6 0.15 40 / 0.28);
+}
+
+.dark {
+  --ember-bg: 0.19 0.014 55;
+  --ember-surface: 0.24 0.016 50;
+  --ember-subtle: 0.28 0.018 50;
+  --ember-border: 0.33 0.02 50;
+  --ember-text: 0.95 0.01 60;
+  --ember-text-muted: 0.78 0.02 55;
+  --ember-text-faint: 0.58 0.02 50;
+  --ember-accent-solid: 0.62 0.15 40;
+  --ember-accent: 0.72 0.13 40;
+  --ember-accent-tint: 0.32 0.05 40;
+  --ember-accent-tint-text: 0.82 0.09 45;
+  --ember-pill: 0.3 0.02 50;
+  --ember-success: 0.62 0.14 150;
+  --ember-success-bg: 0.32 0.06 150;
+  --ember-warning: 0.72 0.13 75;
+  --ember-warning-bg: 0.34 0.05 75;
+  --ember-danger: 0.65 0.17 22;
+  --ember-danger-bg: 0.32 0.06 22;
+  --ember-pending: 0.58 0.02 50;
+  --ember-pending-bg: 0.3 0.01 50;
+  --ember-shadow-card: 0 2px 10px rgba(0, 0, 0, 0.25);
+  --ember-shadow-card-hover: 0 18px 38px rgba(0, 0, 0, 0.45);
+  --ember-shadow-composer: 0 8px 30px rgba(0, 0, 0, 0.3);
+  --ember-shadow-palette: 0 24px 70px rgba(0, 0, 0, 0.5);
+  --ember-glow-ring: 0 0 0 3px oklch(0.62 0.15 40 / 0.35);
+  --ember-shadow-bubble: 0 4px 14px oklch(0.62 0.15 40 / 0.28);
 }
 
 html,
@@ -217,4 +279,153 @@ body {
 .hljs-title,
 .hljs-name {
   color: #d2a8ff;
+}
+
+/* ------------------------------------------------------------------ *
+ * Ember product-app motion — keyframes + helpers (emb-*).
+ * ------------------------------------------------------------------ */
+@keyframes emb-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes emb-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes emb-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes emb-ripple {
+  from {
+    transform: scale(0);
+    opacity: 0.4;
+  }
+  to {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+@keyframes emb-shimmer {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+@keyframes emb-ember-a {
+  0%,
+  100% {
+    transform: scale(0.85);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
+@keyframes emb-ember-b {
+  0%,
+  100% {
+    transform: scale(1.1);
+  }
+  50% {
+    transform: scale(0.9);
+  }
+}
+@keyframes emb-bounce-pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes emb-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}
+@keyframes emb-check-flash {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  25% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+  75% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+/* Each swapped page fades + rises in. */
+.emb-page-in {
+  animation: emb-page-in 0.28s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+/* Shimmering "Thinking…" label (gradient text sweep). */
+.emb-shimmer {
+  background: linear-gradient(
+    100deg,
+    oklch(var(--ember-text-faint)) 20%,
+    oklch(var(--ember-text)) 50%,
+    oklch(var(--ember-text-faint)) 80%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: emb-shimmer 1.6s linear infinite;
+}
+/* Blinking accent caret shown while a reply streams in. */
+.emb-caret::after {
+  content: "";
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: oklch(var(--ember-accent));
+  animation: emb-breathe 1s steps(1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .emb-page-in,
+  .emb-shimmer,
+  .emb-caret::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

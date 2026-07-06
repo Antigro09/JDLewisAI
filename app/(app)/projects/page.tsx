@@ -3,6 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/server";
 import { db } from "@/lib/db";
 import { projects } from "@/lib/db/schema";
+import { FolderOpen } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { Button, Card, Input, Label, Textarea } from "@/components/ui";
 import { createProject } from "./actions";
@@ -50,18 +51,23 @@ export default async function ProjectsPage() {
 
         <div className="space-y-3">
           {rows.length === 0 && (
-            <p className="text-sm text-neutral-500">No projects yet.</p>
+            <p className="text-sm text-ember-faint">No projects yet.</p>
           )}
           {rows.map((p) => (
-            <Link key={p.id} href={`/projects/${p.id}`}>
-              <Card className="p-4 transition-colors hover:border-brand-300">
-                <div className="font-medium text-neutral-900">{p.name}</div>
+            <Link key={p.id} href={`/projects/${p.id}`} className="block">
+              <Card className="p-5 transition-[transform,box-shadow] duration-200 ease-ember-spring hover:-translate-y-2 hover:scale-[1.01] hover:shadow-ember-card-hover">
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-[12px] bg-ember-tint text-ember-tint-text">
+                  <FolderOpen size={20} />
+                </div>
+                <div className="text-[16.5px] font-semibold text-ember-text">
+                  {p.name}
+                </div>
                 {p.description && (
-                  <div className="mt-0.5 text-sm text-neutral-500">
+                  <div className="mt-0.5 text-sm text-ember-faint">
                     {p.description}
                   </div>
                 )}
-                <div className="mt-2 text-xs text-neutral-400">
+                <div className="mt-2 text-xs text-ember-faint">
                   Created {formatDate(p.createdAt)}
                 </div>
               </Card>
