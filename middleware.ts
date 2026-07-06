@@ -9,7 +9,10 @@ export async function middleware(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   const claims = token ? await verifySessionToken(token) : null;
 
-  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  // The marketing home ("/") is public; the page itself redirects signed-in
+  // users on to /chat. Match it exactly so it doesn't open up every path.
+  const isPublic =
+    pathname === "/" || PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
   if (!claims && !isPublic) {
     const url = new URL("/login", req.url);
