@@ -17,6 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
       - name: Download source clips and voiceover
         run: |
           curl -fsSL -o halfA.mp4 "https://d8j0ntlcm91z4.cloudfront.net/user_3G6RqDndVG2Mizpxv0qQWhGyAIN/hf_20260706_052943_8ff4f293-be4e-4a91-af93-44b655112512.mp4"
