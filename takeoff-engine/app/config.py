@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     segmenter_transport: Transport = "mock"
     rollup_transport: Transport = "mock"
 
+    # Local (in-process) weights — used when transport = "local". Point these at
+    # the model files you downloaded. OCR (PaddleOCR) fetches its own weights.
+    detector_checkpoint: str = ""      # path to your fine-tuned RF-DETR .pth
+    detector_threshold: float = 0.4
+    segmenter_checkpoint: str = ""     # path to a SAM 2 .pt checkpoint
+    segmenter_model_cfg: str = "sam2_hiera_s.yaml"
+
     # SageMaker endpoints (primary hosted-model path). Each adapter invokes
     # its own serverless/real-time endpoint via sagemaker-runtime.
     aws_region: str = "us-east-1"
