@@ -16,11 +16,20 @@ from app.pipeline.measure import derive_concrete_volume, derive_flooring
 from app.schemas.ocr import OCRSpan
 from app.schemas.quantity import QuantityItem
 
+# Two shapes:
+#   forward  — a dimension that directly qualifies SLAB: 4" CONC. SLAB · 6" THK SLAB · 6" SLAB
+#   reversed — SLAB ... <dim>, but the gap excludes rebar/spacing markers (@ # ) and the
+#              dimension may not be followed by O.C., so `SLAB W/ #4 @ 16" O.C.` (bar spacing)
+#              is NOT misread as depth while `SLAB ON GRADE: 6" W/ WWM` still parses to 6".
 _THICKNESS_RE = re.compile(
-    r"""(\d+(?:\s+\d/\d)?(?:\.\d+)?\s*(?:"|”|″))\s*
-        (?:THK\.?|THICK(?:NESS)?)?\s*
-        (?:CONC(?:RETE)?\.?\s*)?SLAB
-      | SLAB[^.\n]{0,30}?(\d+(?:\s+\d/\d)?(?:\.\d+)?\s*(?:"|”|″))""",
+    r"""
+    (?P<fwd>\d+(?:\s+\d/\d)?(?:\.\d+)?\s*(?:"|”|″))\s*
+        (?:THK\.?|THICK(?:NESS)?\.?)?\s*(?:CONC(?:RETE)?\.?\s*)?SLAB
+    |
+    SLAB[^.@#\n]{0,25}?
+        (?P<rev>\d+(?:\s+\d/\d)?(?:\.\d+)?\s*(?:"|”|″))
+        (?!\s*(?:o\.?\s?c\.?|oc\b))
+    """,
     re.IGNORECASE | re.VERBOSE,
 )
 
@@ -32,7 +41,7 @@ def find_slab_thickness_ft(spans: list[OCRSpan]) -> tuple[float | None, list[str
         m = _THICKNESS_RE.search(span.text)
         if not m:
             continue
-        token = m.group(1) or m.group(2)
+        token = m.group("fwd") or m.group("rev")
         thickness_ft = parse_feet_inches(token, default_unit="in")
         if thickness_ft and 0.5 / 12 <= thickness_ft <= 4.0:  # 0.5"–48" plausible slab range
             return thickness_ft, [span.id]

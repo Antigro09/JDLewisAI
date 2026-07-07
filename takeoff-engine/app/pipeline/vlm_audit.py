@@ -126,7 +126,11 @@ def run_audit(
         if decision.decision == "uncertain" or decision.confidence < 0.5:
             item.confidence.vlm_audit = min(item.confidence.vlm_audit, 0.5)
             _flag(item, ReviewReason.VLM_FLAGGED)
-        elif decision.decision in ("polygon_likely_wrong", "label_belongs_elsewhere"):
+        elif decision.decision in (
+            "polygon_likely_wrong",
+            "label_belongs_elsewhere",
+            "trust_known_dimension",  # VLM says the written scale note is wrong
+        ):
             item.confidence.vlm_audit = min(item.confidence.vlm_audit, 1 - decision.confidence)
             _flag(item, ReviewReason.VLM_FLAGGED)
         else:

@@ -13,6 +13,7 @@ local thread queue and RQ can run it.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from datetime import UTC, datetime
 
@@ -32,13 +33,44 @@ from app.pipeline.measure import count_symbols, measure_area_item
 from app.pipeline.rollup import rollup_items
 from app.pipeline.scale_calibration import resolve_scale
 from app.pipeline.sheet_classify import classify_sheet
+from app.schemas.confidence import ReviewReason
 from app.schemas.core import SheetType
+from app.schemas.scale import ScaleCalibration, ScaleSource
 from app.storage.local import LocalStorage
 
 log = logging.getLogger(__name__)
 
 # detection label → quantity item type
 ITEM_TYPE_BY_LABEL = {"slab": "concrete_slab", "room": "flooring", "door": "door", "window": "window"}
+
+
+def _stable_id(*parts) -> str:
+    """Content-derived id so re-processing the same page upserts existing rows
+    instead of minting fresh ones (which would double-count on every re-run)."""
+    return hashlib.sha1("::".join(str(p) for p in parts).encode()).hexdigest()[:32]
+
+
+def _nearest_label(label_dets, engine, g):
+    """Nearest room_label detection to a polygon (for LABEL_FAR_FROM_POLYGON)."""
+    if not label_dets:
+        return None
+    return min(label_dets, key=lambda d: engine.label_distance_pt(d.bbox, g))
+
+
+def _load_manual_scale(sheet_id: str) -> ScaleCalibration | None:
+    """A two-click MANUAL calibration stored by the /calibrate endpoint wins over
+    every OCR-derived source on re-process. Preserved across re-runs."""
+    with session_scope() as s:
+        rows = s.query(ArtifactRow).filter_by(sheet_id=sheet_id, kind="scale").all()
+        manual = [
+            r.data for r in rows if r.data.get("source") == ScaleSource.MANUAL.value
+        ]
+    if not manual:
+        return None
+    # Newest manual calibration wins.
+    manual.sort(key=lambda d: d.get("created_at", ""))
+    cal = ScaleCalibration.model_validate(manual[-1])
+    return cal if cal.usable else None
 
 
 def process_project_job(project_id: str, job_id: str) -> None:
@@ -95,6 +127,9 @@ def _process_file(project_id, file_row, settings, storage, adapters, geometry_en
 
         # --- 1. sheet ingestion ------------------------------------------
         sheet = ingestor.extract_sheet(path, page_number, project_id, file_row.storage_path)
+        # Stable identity keyed on (project, file, page) so a re-run overwrites
+        # this sheet's rows rather than appending a duplicate set.
+        sheet.id = _stable_id(project_id, file_row.storage_path, page_number)
         render_key = f"projects/{project_id}/renders/{sheet.id}_{settings.render_dpi}.png"
         raster = ingestor.render_page(
             path, page_number, sheet.id, settings.render_dpi, storage.open_path(render_key)
@@ -119,7 +154,10 @@ def _process_file(project_id, file_row, settings, storage, adapters, geometry_en
 
         # --- 4. scale calibration ------------------------------------------
         pdf_scale = None if is_tiff else ingestor.scale_metadata(path, page_number)
-        scale = resolve_scale(sheet, spans, pdf_metadata_ft_per_pt=pdf_scale)
+        manual_scale = _load_manual_scale(sheet.id)
+        scale = resolve_scale(
+            sheet, spans, pdf_metadata_ft_per_pt=pdf_scale, manual_override=manual_scale
+        )
         sheet.is_nts = scale.source.value == "nts"
 
         # --- 5. candidates --------------------------------------------------
@@ -132,8 +170,11 @@ def _process_file(project_id, file_row, settings, storage, adapters, geometry_en
         # near-identical polygons; keep one per region.
         geometries = _dedupe_geometries(geometries, geometry_engine)
         items = []
+        item_labels: dict[str, object] = {}  # item.id → nearest room_label detection
         det_by_id = {d.id: d for d in detections}
-        for geom in geometries:
+        label_dets = [d for d in detections if d.label == "room_label"]
+
+        for idx, geom in enumerate(geometries):
             det = next((det_by_id[i] for i in geom.derived_from if i in det_by_id), None)
             label = det.label if det else "room"
             item_type = ITEM_TYPE_BY_LABEL.get(label)
@@ -142,18 +183,20 @@ def _process_file(project_id, file_row, settings, storage, adapters, geometry_en
             # Structural sheets take off slabs; everything measured there is concrete.
             if sheet.sheet_type == SheetType.STRUCTURAL_PLAN:
                 item_type = "concrete_slab"
-            items.append(
-                measure_area_item(
-                    project_id=project_id, sheet=sheet, geometry=geom, scale=scale,
-                    detection=det, item_type=item_type, settings=settings,
-                )
+            item = measure_area_item(
+                project_id=project_id, sheet=sheet, geometry=geom, scale=scale,
+                detection=det, item_type=item_type, settings=settings,
             )
+            item.id = _stable_id(sheet.id, item_type, idx)
+            items.append(item)
+            item_labels[item.id] = _nearest_label(label_dets, geometry_engine, geom)
         for label in COUNT_LABELS:
             counted = count_symbols(
                 project_id=project_id, sheet=sheet, detections=detections,
                 label=label, scale=scale,
             )
             if counted:
+                counted.id = _stable_id(sheet.id, label)
                 items.append(counted)
 
         # --- 7. confidence + review flags ------------------------------------
@@ -163,6 +206,7 @@ def _process_file(project_id, file_row, settings, storage, adapters, geometry_en
             finalize_item(
                 item, settings=settings, scale=scale,
                 geometries=geoms_by_id, masks=masks_by_id,
+                label_detection=item_labels.get(item.id),
             )
 
         # --- 8. VLM audit (flagged items only) --------------------------------
@@ -172,10 +216,16 @@ def _process_file(project_id, file_row, settings, storage, adapters, geometry_en
 
         # --- 9. estimator rollup ----------------------------------------------
         items = rollup_items(items, spans, adapters["rollup"], settings)
-        # Rollup may change units/values via deterministic derivations; recompute
-        # final confidence once more (flags only accumulate, never clear).
+        # Rollup/VLM may have lowered confidence; recompute and re-apply the
+        # low-confidence threshold so a late drop still flags for review.
         for item in items:
             item.final_confidence = item.confidence.final()
+            if (
+                item.final_confidence < settings.review_confidence_threshold
+                and ReviewReason.LOW_CONFIDENCE not in item.review_reason
+            ):
+                item.needs_review = True
+                item.review_reason.append(ReviewReason.LOW_CONFIDENCE)
 
         _persist_sheet(
             project_id, sheet, raster, vector_paths, spans, ocr_result.tables,
@@ -208,13 +258,29 @@ def _persist_sheet(project_id, sheet, raster, vector_paths, spans, tables,
         )
 
     with session_scope() as s:
-        s.add(SheetRow(
+        # Idempotent re-process: clear this sheet's prior artifacts (keeping any
+        # human MANUAL calibration) and upsert the sheet + quantities by their
+        # stable ids, so a second /process run overwrites instead of duplicating.
+        # Quantities are upserted (not deleted) so review_decisions stay linked.
+        manual_ids = {
+            r.id
+            for r in s.query(ArtifactRow).filter_by(sheet_id=sheet.id, kind="scale").all()
+            if r.data.get("source") == ScaleSource.MANUAL.value
+        }
+        for r in s.query(ArtifactRow).filter_by(sheet_id=sheet.id).all():
+            if r.id not in manual_ids:
+                s.delete(r)
+        s.flush()
+
+        s.merge(SheetRow(
             id=sheet.id, project_id=project_id, page_number=sheet.page_number,
             sheet_number=sheet.sheet_number, sheet_type=sheet.sheet_type.value,
             data=sheet.model_dump(mode="json"),
         ))
         s.add(artifact("raster_page", raster))
-        s.add(artifact("scale", scale))
+        # A resolved MANUAL scale is already persisted (preserved above); don't re-add it.
+        if scale.id not in manual_ids:
+            s.add(artifact("scale", scale))
         for v in vector_paths:
             s.add(artifact("vector_path", v))
         for span in spans:
@@ -228,7 +294,7 @@ def _persist_sheet(project_id, sheet, raster, vector_paths, spans, tables,
         for g in geometries:
             s.add(artifact("geometry", g))
         for item in items:
-            s.add(QuantityRow(
+            s.merge(QuantityRow(
                 id=item.id, project_id=project_id, sheet_id=sheet.id,
                 item_type=item.item_type, unit=item.unit, quantity=item.quantity,
                 needs_review=item.needs_review, review_status=item.review_status,

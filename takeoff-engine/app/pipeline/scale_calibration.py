@@ -29,9 +29,11 @@ FT_PER_PT_UNITY = 1.0 / (72.0 * 12.0)  # 1:1 → one point of paper is 1/864 ft
 
 _NTS_RE = re.compile(r"\b(?:N\.?\s?T\.?\s?S\.?|NOT\s+TO\s+SCALE)\b", re.IGNORECASE)
 
-# 1/8" = 1'-0"   ·   3/32"=1'   ·   1 1/2" = 1'-0"
+# 1/8" = 1'-0"  ·  3/32"=1'  ·  1 1/2" = 1'-0"  ·  1-1/2" = 1'-0" (hyphenated mixed number)
+# The paper group accepts a space OR hyphen between whole and fraction, and a
+# lookbehind stops it matching the '1/2' inside '1-1/2' (which mis-scaled 3x).
 _ARCH_SCALE_RE = re.compile(
-    r"""(?P<paper>\d+(?:\.\d+)?(?:\s+\d+/\d+)?|\d+/\d+)\s*(?:"|”|″|in\b)\s*
+    r"""(?<![\d/])(?P<paper>\d+(?:\.\d+)?(?:[\s-]+\d+/\d+)?|\d+/\d+)\s*(?:"|”|″|in\b)\s*
         =\s*
         (?P<real>[\d'\-\s/."”″]+?)\s*$""",
     re.IGNORECASE | re.VERBOSE,
@@ -60,13 +62,14 @@ def parse_scale_note(text: str) -> tuple[float | None, str]:
 
     m = _ARCH_SCALE_RE.search(s)
     if m:
-        paper_in = parse_feet_inches(m.group("paper"), default_unit="in")
+        paper_token = m.group("paper").replace("-", " ")  # '1-1/2' → '1 1/2'
+        paper_in = parse_feet_inches(paper_token, default_unit="in")
         real_ft = parse_feet_inches(m.group("real"), default_unit="ft")
         if paper_in and real_ft and paper_in > 0 and real_ft > 0:
             paper_in_actual = paper_in * 12.0  # parse gave feet; the token is inches
             ft_per_in = real_ft / paper_in_actual
-            # Sanity: architectural/engineering scales live in a known range.
-            if 0.5 <= ft_per_in <= 2000:
+            # Sanity: allow full-scale detail (12"=1'-0" → ~0.083) up to site plans.
+            if 0.08 <= ft_per_in <= 2000:
                 return ft_per_in / PT_PER_IN, f'{m.group("paper")}" = {m.group("real").strip()}'
 
     m = _RATIO_RE.search(s)
@@ -135,13 +138,18 @@ def resolve_scale(
     spans: list[OCRSpan],
     pdf_metadata_ft_per_pt: float | None = None,
     known_dimension: ScaleCalibration | None = None,
+    manual_override: ScaleCalibration | None = None,
 ) -> ScaleCalibration:
     """Pick the best available scale for a sheet, in rank order.
 
-    A cross-check between independent sources adjusts confidence: agreement
-    (within 2%) boosts, disagreement (> 5%) cuts — the conflict is surfaced,
-    not hidden.
+    A human two-click MANUAL calibration outranks every automatic source, so a
+    correction actually takes effect on re-process. Otherwise a cross-check
+    between independent sources adjusts confidence: agreement (within 2%)
+    boosts, disagreement (> 5%) cuts — the conflict is surfaced, not hidden.
     """
+    if manual_override is not None and manual_override.usable:
+        return manual_override
+
     if pdf_metadata_ft_per_pt:
         return ScaleCalibration(
             sheet_id=sheet.id,

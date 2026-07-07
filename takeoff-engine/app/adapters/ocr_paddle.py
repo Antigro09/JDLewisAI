@@ -73,21 +73,17 @@ class PaddleOCRAdapter(OCRAdapter):
         return OCRResult(spans=spans)
 
     def _run_remote(self, image, sheet_id, px_per_pt) -> OCRResult:
-        import base64
+        from app.adapters.transport import encode_image_capped
 
-        import cv2
-
-        ok, buf = cv2.imencode(".png", image)
-        if not ok:
-            raise RuntimeError("failed to encode image for OCR endpoint")
-        resp = self.transport.invoke(
-            {"image_b64": base64.b64encode(buf.tobytes()).decode(), "structure": True}
-        )
+        # PNG keeps text crisp; still cap the size for the serverless payload limit.
+        b64, scale = encode_image_capped(image, ".png")
+        eff = px_per_pt * scale
+        resp = self.transport.invoke({"image_b64": b64, "structure": True})
         spans = [
             OCRSpan(
                 sheet_id=sheet_id,
                 text=s["text"],
-                bbox=tuple(v / px_per_pt for v in s["bbox_px"]),
+                bbox=tuple(v / eff for v in s["bbox_px"]),
                 rotation_deg=s.get("rotation", 0.0),
                 confidence=s.get("confidence", 0.0),
                 source="paddleocr",
@@ -97,7 +93,7 @@ class PaddleOCRAdapter(OCRAdapter):
         tables = [
             OCRTable(
                 sheet_id=sheet_id,
-                bbox=tuple(v / px_per_pt for v in t["bbox_px"]),
+                bbox=tuple(v / eff for v in t["bbox_px"]),
                 header=t.get("header", []),
                 rows=t.get("rows", []),
                 confidence=t.get("confidence", 0.0),

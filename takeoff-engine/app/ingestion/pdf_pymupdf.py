@@ -11,6 +11,7 @@ permissive licenses) — both implement the same PdfIngestor interface.
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -45,22 +46,31 @@ class PyMuPDFIngestor:
         spans: list[OCRSpan] = []
         with fitz.open(pdf_path) as doc:
             page = doc[page_number - 1]
+            # get_text() returns UNROTATED coords, but the raster render and
+            # recorded page dims are in the rotated (displayed) frame. Map spans
+            # into that frame so overlays line up on rotated sheets. Identity at
+            # rotation 0 (the common case), so unrotated pages are unaffected.
+            mat = page.rotation_matrix
+            rotated = bool(page.rotation)
             for block in page.get_text("dict")["blocks"]:
                 if block.get("type") != 0:  # text blocks only
                     continue
                 for line in block["lines"]:
                     (dx, dy) = line.get("dir", (1.0, 0.0))
-                    import math
-                    rotation = math.degrees(math.atan2(-dy, dx)) % 360
+                    rotation = (math.degrees(math.atan2(-dy, dx)) + page.rotation) % 360
                     for span in line["spans"]:
                         text = span["text"].strip()
                         if not text:
                             continue
+                        bbox = tuple(span["bbox"])
+                        if rotated:
+                            r = (fitz.Rect(span["bbox"]) * mat).normalize()
+                            bbox = (r.x0, r.y0, r.x1, r.y1)
                         spans.append(
                             OCRSpan(
                                 sheet_id=sheet_id,
                                 text=text,
-                                bbox=tuple(span["bbox"]),
+                                bbox=bbox,
                                 rotation_deg=round(rotation, 1),
                                 confidence=1.0,  # native text is exact
                                 source="pdf_native",
@@ -76,6 +86,8 @@ class PyMuPDFIngestor:
         paths: list[VectorPath] = []
         with fitz.open(pdf_path) as doc:
             page = doc[page_number - 1]
+            mat = page.rotation_matrix  # identity when rotation == 0
+            rotated = bool(page.rotation)
             for drawing in page.get_drawings():
                 if len(paths) >= max_paths:
                     break
@@ -105,13 +117,27 @@ class PyMuPDFIngestor:
                         subpaths.append(
                             [(r.x0, r.y0), (r.x1, r.y0), (r.x1, r.y1), (r.x0, r.y1), (r.x0, r.y0)]
                         )
+                    elif op == "qu":  # quad (e.g. rotated fill) — four corners, closed
+                        q = item[1]
+                        if current:
+                            subpaths.append(current)
+                            current = []
+                        subpaths.append([
+                            (q.ul.x, q.ul.y), (q.ur.x, q.ur.y),
+                            (q.lr.x, q.lr.y), (q.ll.x, q.ll.y), (q.ul.x, q.ul.y),
+                        ])
                 if current:
                     subpaths.append(current)
                 if not subpaths:
                     continue
+                if rotated:  # lift unrotated draw coords into the displayed frame
+                    subpaths = [
+                        [tuple(fitz.Point(x, y) * mat) for (x, y) in sp] for sp in subpaths
+                    ]
                 xs = [p[0] for sp in subpaths for p in sp]
                 ys = [p[1] for sp in subpaths for p in sp]
-                color = drawing.get("color")
+                # Stroke color, falling back to fill color for fill-only paths.
+                color = drawing.get("color") or drawing.get("fill")
                 paths.append(
                     VectorPath(
                         sheet_id=sheet_id,

@@ -1,7 +1,14 @@
 """Confidence finalization + review flagging (deterministic).
 
-Applies every flag rule from the spec, computes final confidence, and stamps
-needs_review. Runs LAST over each QuantityItem so no stage can un-flag."""
+Applies the flag rules, computes final confidence, and stamps needs_review.
+Runs as stage 7 of the pipeline (before the VLM audit and rollup); those later
+stages only ADD flags and lower confidence — they never un-flag — and the
+orchestrator re-checks the low-confidence threshold after they run.
+
+Rules that need cross-item context (VERSION_DELTA needs a prior version;
+SCHEDULE_PLAN_MISMATCH needs schedule linking) only fire when the orchestrator
+supplies previous_quantity / schedule_plan_mismatch; both are wired opportun-
+istically as that upstream data becomes available."""
 
 from __future__ import annotations
 
@@ -35,7 +42,11 @@ def finalize_item(
     if item.unit != "EA":
         if scale.source == ScaleSource.NTS:
             flag(ReviewReason.NTS_SHEET)
+        elif scale.source == ScaleSource.NONE:
+            # No scale source at all → a human must calibrate (two-click).
+            flag(ReviewReason.MANUAL_CALIBRATION_REQUIRED)
         elif not scale.usable or scale.confidence < settings.min_scale_confidence:
+            # A source exists but is unusable/weak.
             flag(ReviewReason.NO_RELIABLE_SCALE)
 
     # 3. open polygons

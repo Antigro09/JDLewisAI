@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     ocr_sagemaker_endpoint: str = ""
     vlm_sagemaker_endpoint: str = ""          # e.g. qwen3-vl-8b (real-time; too big for serverless)
     detector_sagemaker_endpoint: str = ""     # e.g. rf-detr-construction
+    detector_gdino_sagemaker_endpoint: str = ""  # optional open-vocab bootstrap
     segmenter_sagemaker_endpoint: str = ""    # e.g. sam2-hiera-base
     rollup_sagemaker_endpoint: str = ""       # e.g. llama-3-3-70b (real-time)
 

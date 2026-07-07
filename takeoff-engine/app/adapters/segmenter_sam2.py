@@ -58,7 +58,7 @@ class SAM2Adapter(SegmenterAdapter):
         predictor = self._local_predictor()
         predictor.set_image(image[..., ::-1])  # BGR→RGB
         out: list[SegmentationMask] = []
-        for box in boxes:
+        for i, box in enumerate(boxes):
             box_px = np.array([v * px_per_pt for v in box])
             masks, scores, _ = predictor.predict(box=box_px, multimask_output=False)
             mask = clean_mask(masks[0].astype(np.uint8) * 255)
@@ -69,34 +69,33 @@ class SAM2Adapter(SegmenterAdapter):
                     confidence=float(scores[0]),
                     segmenter=self.name,
                     prompt_kind="box",
+                    source_box_index=i,
                 )
             )
         return out
 
     def _segment_remote(self, image, sheet_id, px_per_pt, boxes) -> list[SegmentationMask]:
-        import base64
+        from app.adapters.transport import encode_image_capped
 
-        import cv2
-
-        ok, buf = cv2.imencode(".png", image)
-        if not ok:
-            raise RuntimeError("failed to encode image for SAM 2 endpoint")
+        b64, scale = encode_image_capped(image, ".png")
+        eff = px_per_pt * scale  # sent boxes and returned polygons are in the downscaled frame
         resp = self.transport.invoke(
             {
-                "image_b64": base64.b64encode(buf.tobytes()).decode(),
-                "boxes_px": [[v * px_per_pt for v in b] for b in boxes],
+                "image_b64": b64,
+                "boxes_px": [[v * eff for v in b] for b in boxes],
             }
         )
         return [
             SegmentationMask(
                 sheet_id=sheet_id,
                 polygons=[
-                    [(x / px_per_pt, y / px_per_pt) for x, y in ring]
+                    [(x / eff, y / eff) for x, y in ring]
                     for ring in m["polygons_px"]
                 ],
                 confidence=m.get("confidence", 0.0),
                 segmenter=self.name,
                 prompt_kind="box",
+                source_box_index=m.get("box_index", i),
             )
-            for m in resp.get("masks", [])
+            for i, m in enumerate(resp.get("masks", []))
         ]

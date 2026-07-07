@@ -148,6 +148,8 @@ Thresholds are configuration (`app/config.py`), not code.
 
 **Do not fine-tune Qwen or Llama first.** Use prompt engineering, RAG over OCR spans/schedule tables, deterministic rules, and the human-corrections log. LLM fine-tuning is a last resort after those are exhausted. Full plan: [`docs/fine-tuning-roadmap.md`](docs/fine-tuning-roadmap.md).
 
+**Runnable training code lives in [`training/`](training/)** — `export_corrections_to_coco.py` turns the review-UI corrections log into a COCO dataset (+ segmentation masks) straight from the engine's database, then `finetune_rfdetr.py`, `finetune_segmentation.py`, and `train_sheet_classifier.py` train the three targets. See [`training/README.md`](training/README.md).
+
 ## Evaluation
 
 Benchmark format (one JSON per sheet): input sheet, human-labeled polygons, human-labeled counts, human-labeled scale, expected quantities, accepted tolerance by trade. Metrics: area error %, count precision/recall, scale detection accuracy, OCR span recall for key notes, schedule-linking accuracy, % of items requiring review, correction time saved vs manual takeoff. Details and file schema: [`docs/evaluation.md`](docs/evaluation.md).
@@ -165,8 +167,9 @@ Benchmark format (one JSON per sheet): input sheet, human-labeled polygons, huma
 - **PyMuPDF is AGPL-3.0.** Fine for internal/open deployments; if that's a problem, implement the stubbed `pdf_pdfium` ingestor (pypdfium2 + pdfplumber, permissive). Marker was considered for layout parsing and excluded from the core for the same licensing reason.
 - Scale handling assumes **one scale per sheet**; per-viewport scale is modeled (`DrawingViewport.scale_id`) but viewport detection isn't implemented yet. Details drawn at a second scale on a plan sheet will mis-measure until then — mitigated by the plausibility flags.
 - Graphic-scale-bar reading and known-dimension auto-calibration are stubs (`ScaleSource` ranks exist; detectors for the bar/extension lines don't yet).
-- PP-Structure table extraction (door/window/finish schedules) is wired as a contract but not parsed end-to-end; schedule linking is therefore partial.
-- Wall LF takeoff, curved geometry, multi-viewport sheets, rotated text handling beyond span rotation, and revision-vs-revision diffing are future work.
+- PP-Structure table extraction (door/window/finish schedules) is wired as a contract but not parsed end-to-end; so the **`SCHEDULE_PLAN_MISMATCH`** review flag stays dormant until schedule-linking lands.
+- **`VERSION_DELTA`** (quantity-changed-vs-previous) needs revision history: re-processing a project is an idempotent upsert on stable ids (no double-counting), but it overwrites rather than versioning, so cross-revision deltas aren't computed yet. Manual two-click calibration **is** honored on re-process. Review decisions keep a self-contained `machine_snapshot` (the training-data payload) even though their live link to a re-measured quantity is best-effort.
+- Wall LF takeoff, curved geometry, multi-viewport sheets, and revision-vs-revision diffing are future work. Rotated (90/180/270°) sheets now have text + vectors mapped into the render frame; skew/arbitrary-angle scans are not corrected.
 - Imperial-first: metric ratios (`1:100`) parse, but downstream units are SF/LF/CY.
 - One VLM question per ambiguity; no escalation to the 235B thinking model yet (the queue design supports it).
 - **No accuracy guarantee.** Exports carry a disclaimer; the review workflow is the product, not an afterthought.

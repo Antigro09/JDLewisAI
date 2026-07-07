@@ -22,6 +22,7 @@ from typing import Any
 import numpy as np
 from pydantic import BaseModel, Field
 
+from app.adapters.transport import AdapterNotConfigured
 from app.config import Settings
 from app.schemas.detection import DetectedObject, SegmentationMask
 from app.schemas.ocr import OCRSpan, OCRTable
@@ -66,7 +67,10 @@ class SegmenterAdapter(ABC):
         px_per_pt: float,
         boxes: list[tuple[float, float, float, float]],  # page points
     ) -> list[SegmentationMask]:
-        """Promptable segmentation from candidate boxes → mask polygons in page points."""
+        """Promptable segmentation from candidate boxes → mask polygons in page points.
+
+        Each returned mask must carry `source_box_index` (the index of its prompt
+        box); callers associate masks to boxes by that index, not by position."""
 
 
 class VLMDecision(BaseModel):
@@ -145,6 +149,13 @@ def build_adapters(settings: Settings) -> dict[str, Any]:
         if transport == "mock":
             return mock_cls()
         if transport == "local":
+            # Some adapters (the LLM/VLM endpoints) have no in-process path.
+            if local_cls is None:
+                raise AdapterNotConfigured(
+                    "local transport",
+                    "this adapter has no in-process 'local' mode; "
+                    "use TAKEOFF_*_TRANSPORT=sagemaker or openai_compat",
+                )
             return local_cls()
         return remote_factory()
 
@@ -175,20 +186,27 @@ def build_adapters(settings: Settings) -> dict[str, Any]:
                 region=settings.aws_region,
             ),
         ),
+        # VLM/rollup are endpoint-only — no in-process 'local' path (local_cls=None).
         "vlm": pick(
             settings.vlm_transport,
             vlm_mock.MockVLMAdapter,
-            vlm_qwen.QwenVLAdapter,
+            None,
             lambda: vlm_qwen.QwenVLAdapter.from_settings(settings),
         ),
         "rollup": pick(
             settings.rollup_transport,
             rollup_mock.MockRollupAdapter,
-            rollup_llm.TextLLMRollupAdapter,
+            None,
             lambda: rollup_llm.TextLLMRollupAdapter.from_settings(settings),
         ),
-        # Open-vocabulary candidate detector is optional and additive.
+        # Open-vocabulary candidate detector is optional and additive. It runs
+        # only behind its own SageMaker endpoint (it has no local build here).
         "open_vocab_detector": (
-            detector_gdino.GroundingDINOAdapter() if settings.detector_transport == "local" else None
+            detector_gdino.GroundingDINOAdapter(
+                sagemaker_endpoint=settings.detector_gdino_sagemaker_endpoint,
+                region=settings.aws_region,
+            )
+            if settings.detector_gdino_sagemaker_endpoint
+            else None
         ),
     }
