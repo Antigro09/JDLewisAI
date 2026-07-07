@@ -14,7 +14,7 @@ Outputs (under --out):
     images/  masks/  classes.json
 
 What becomes a label:
-  - review_status == accepted  → the machine geometry is correct as-is.
+  - review_status == accepted   → the machine geometry is correct as-is.
   - review_status == edited     → use the human-corrected geometry if present,
                                   else the machine geometry (the human kept it
                                   but changed the number, so the shape stands).
