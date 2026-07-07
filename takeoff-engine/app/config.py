@@ -26,8 +26,7 @@ class Settings(BaseSettings):
 
     # --- rendering -------------------------------------------------------
     render_dpi: int = 150          # default page raster DPI
-    max_render_dpi: int = 400
-    thumbnail_dpi: int = 72
+    max_render_dpi: int = 400      # hard clamp so a bad override can't blow up memory
 
     # --- adapter selection ----------------------------------------------
     ocr_transport: Transport = "mock"
@@ -56,7 +55,6 @@ class Settings(BaseSettings):
     # --- confidence & review thresholds ----------------------------------
     review_confidence_threshold: float = 0.75   # final confidence below this → needs_review
     min_scale_confidence: float = 0.5           # below this the sheet is treated as scale-less
-    scale_dimension_conflict_pct: float = 5.0   # OCR scale vs known dimension disagreement (%)
     version_delta_review_pct: float = 15.0      # quantity change vs previous version (%)
     label_max_distance_ft: float = 3.0          # room label farther than this outside polygon
     mask_line_overreach_ratio: float = 0.35     # SAM mask touching unrelated line regions

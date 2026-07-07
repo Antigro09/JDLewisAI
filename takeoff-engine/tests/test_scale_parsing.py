@@ -100,6 +100,18 @@ class TestResolveScale:
         assert cal.source == ScaleSource.NONE
         assert not cal.usable
 
+    def test_conflicting_scale_notes_flagged(self):
+        cal = resolve_scale(sheet(), [span('1/8" = 1\'-0"'), span('1/4" = 1\'-0"')])
+        assert cal.source == ScaleSource.SCALE_NOTE
+        assert cal.dimension_conflict  # two distinct scales on one sheet → review
+
+    def test_corroborating_scale_notes_boost_confidence(self):
+        one = resolve_scale(sheet(), [span('1/8" = 1\'-0"')]).confidence
+        two = resolve_scale(sheet(), [span('1/8" = 1\'-0"'), span('1/8" = 1\'-0"')]).confidence
+        assert two > one and not resolve_scale(
+            sheet(), [span('1/8" = 1\'-0"'), span('1/8" = 1\'-0"')]
+        ).dimension_conflict
+
     def test_ocr_confidence_propagates(self):
         high = resolve_scale(sheet(), [span('1/8" = 1\'-0"', conf=1.0)])
         low = resolve_scale(sheet(), [span('1/8" = 1\'-0"', conf=0.5)])

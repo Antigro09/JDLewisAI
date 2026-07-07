@@ -9,20 +9,7 @@ so the assumption is auditable).
 
 from __future__ import annotations
 
+# The only shared constant needed here: the DPI assumed for TIFFs with no tag.
+# Actual px↔pt conversion lives where a concrete DPI is known (RasterPage.px_per_pt,
+# ingestors), so the standalone helpers that used to sit here were dead weight.
 DEFAULT_TIFF_DPI = 300
-
-
-def px_per_pt(dpi: int | float) -> float:
-    return float(dpi) / 72.0
-
-
-def px_to_pt(v: float, dpi: int | float) -> float:
-    return v * 72.0 / float(dpi)
-
-
-def pt_to_px(v: float, dpi: int | float) -> float:
-    return v * float(dpi) / 72.0
-
-
-def bbox_px_to_pt(bbox: tuple[float, float, float, float], dpi: int | float):
-    return tuple(px_to_pt(v, dpi) for v in bbox)

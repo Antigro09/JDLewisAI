@@ -41,17 +41,3 @@ class QuantityItem(BaseModel):
     attributes: dict = Field(default_factory=dict)  # thickness_ft, waste_factor, mark, ...
     version: int = 1
     created_at: datetime = Field(default_factory=utcnow)
-
-
-class AssemblyMapping(BaseModel):
-    """Maps a measured item type to an estimating assembly / CSI category."""
-
-    id: str = Field(default_factory=new_id)
-    item_type: str
-    assembly_name: str
-    csi_code: str = ""
-    unit: str = ""
-    formula_template: str = ""     # e.g. "CY = SF * thickness_ft / 27"
-    waste_factor: float = 1.0
-    notes: str = ""
-    source: str = "builtin"        # builtin | llm_suggested | user

@@ -130,9 +130,10 @@ def _process_file(project_id, file_row, settings, storage, adapters, geometry_en
         # Stable identity keyed on (project, file, page) so a re-run overwrites
         # this sheet's rows rather than appending a duplicate set.
         sheet.id = _stable_id(project_id, file_row.storage_path, page_number)
-        render_key = f"projects/{project_id}/renders/{sheet.id}_{settings.render_dpi}.png"
+        render_dpi = min(settings.render_dpi, settings.max_render_dpi)  # guard absurd DPI
+        render_key = f"projects/{project_id}/renders/{sheet.id}_{render_dpi}.png"
         raster = ingestor.render_page(
-            path, page_number, sheet.id, settings.render_dpi, storage.open_path(render_key)
+            path, page_number, sheet.id, render_dpi, storage.open_path(render_key)
         )
         raster.image_path = render_key
         native_spans, vector_paths = [], []
@@ -161,8 +162,11 @@ def _process_file(project_id, file_row, settings, storage, adapters, geometry_en
         sheet.is_nts = scale.source.value == "nts"
 
         # --- 5. candidates --------------------------------------------------
+        # vector_paths feed the exact vector-first boundary path; the mask is
+        # the fallback only where a sheet carries no linework.
         detections, masks, geometries = run_candidates(
-            image, sheet.id, px_per_pt, adapters["detector"], adapters["segmenter"], geometry_engine
+            image, sheet.id, px_per_pt, adapters["detector"], adapters["segmenter"],
+            geometry_engine, vector_paths=vector_paths,
         )
 
         # --- 6. deterministic measurement -----------------------------------
@@ -190,6 +194,11 @@ def _process_file(project_id, file_row, settings, storage, adapters, geometry_en
             item.id = _stable_id(sheet.id, item_type, idx)
             items.append(item)
             item_labels[item.id] = _nearest_label(label_dets, geometry_engine, geom)
+        # A slab footprint and its interior sub-faces (partitions/rooms) can both
+        # be detected; summing them double-counts concrete. Collapse any slab
+        # contained within a larger slab into the footprint (flooring is left
+        # alone — distinct rooms are distinct floor areas).
+        items = _collapse_contained_slabs(items, {g.id: g for g in geometries}, geometry_engine)
         for label in COUNT_LABELS:
             counted = count_symbols(
                 project_id=project_id, sheet=sheet, detections=detections,
@@ -207,6 +216,7 @@ def _process_file(project_id, file_row, settings, storage, adapters, geometry_en
                 item, settings=settings, scale=scale,
                 geometries=geoms_by_id, masks=masks_by_id,
                 label_detection=item_labels.get(item.id),
+                dpi_assumed=raster.dpi_assumed,
             )
 
         # --- 8. VLM audit (flagged items only) --------------------------------
@@ -215,7 +225,10 @@ def _process_file(project_id, file_row, settings, storage, adapters, geometry_en
             audit.run_audit(queue, adapters["vlm"], image, px_per_pt, {i.id: i for i in items})
 
         # --- 9. estimator rollup ----------------------------------------------
-        items = rollup_items(items, spans, adapters["rollup"], settings)
+        items = rollup_items(
+            items, spans, adapters["rollup"], settings,
+            geometries=geoms_by_id, engine=geometry_engine,
+        )
         # Rollup/VLM may have lowered confidence; recompute and re-apply the
         # low-confidence threshold so a late drop still flags for review.
         for item in items:
@@ -233,21 +246,66 @@ def _process_file(project_id, file_row, settings, storage, adapters, geometry_en
         )
 
 
+_SOURCE_RANK = {"vector": 0, "manual": 1}  # exact > manual > mask/unknown (default 2)
+
+
 def _dedupe_geometries(geometries, engine, threshold: float = 0.92):
-    """Drop polygons that mutually overlap an already-kept one by >threshold."""
+    """Drop polygons that mutually overlap an already-kept one by >threshold.
+
+    Order matters: a region can be captured by BOTH an exact vector face and an
+    approximate mask, so we keep the vector one — ranking boundary_source before
+    area — and only fall back to larger-area within the same source. Shapely
+    shapes are built once per geometry (not on every O(n²) comparison).
+    """
+    shapes: dict[str, object] = {}
+
+    def shape(g):
+        if g.id not in shapes:
+            shapes[g.id] = engine._to_shapely(g)
+        return shapes[g.id]
+
+    def rank(g):
+        return (_SOURCE_RANK.get(g.boundary_source, 2), -g.area_pt2)
+
     kept = []
-    for g in sorted(geometries, key=lambda g: g.area_pt2, reverse=True):
+    for g in sorted(geometries, key=rank):
         if g.kind == "polygon" and g.is_closed:
-            dup = any(
-                k.is_closed
-                and engine.overlap_ratio(g, k) > threshold
-                and engine.overlap_ratio(k, g) > threshold
-                for k in kept
-            )
-            if dup:
-                continue
+            sg = shape(g)
+            if sg is not None:
+                dup = False
+                for k in kept:
+                    sk = shape(k)
+                    if sk is None:
+                        continue
+                    inter = sg.intersection(sk).area
+                    if inter > threshold * sg.area and inter > threshold * sk.area:
+                        dup = True
+                        break
+                if dup:
+                    continue
         kept.append(g)
     return kept
+
+
+def _collapse_contained_slabs(items, geoms_by_id, engine, contain: float = 0.9):
+    """Drop any concrete_slab whose polygon is >=`contain` inside a larger slab
+    (footprint absorbs interior faces) — deterministic anti-double-count."""
+    slabs = [it for it in items if it.item_type == "concrete_slab" and it.source_geometry_ids]
+    drop: set[str] = set()
+    for a in slabs:
+        ga = geoms_by_id.get(a.source_geometry_ids[0])
+        if ga is None or not ga.is_closed:
+            continue
+        for b in slabs:
+            if a is b or b.id in drop:
+                continue
+            gb = geoms_by_id.get(b.source_geometry_ids[0])
+            if gb is None or not gb.is_closed or gb.area_pt2 <= ga.area_pt2:
+                continue
+            if engine.overlap_ratio(ga, gb) >= contain:  # a mostly inside larger b
+                drop.add(a.id)
+                break
+    return [it for it in items if it.id not in drop]
 
 
 def _persist_sheet(project_id, sheet, raster, vector_paths, spans, tables,

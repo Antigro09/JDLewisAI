@@ -163,7 +163,8 @@ def resolve_scale(
     notes = find_scale_notes(spans)
 
     if notes:
-        span, ft_per_pt, canonical = notes[0]
+        # Cross-check EVERY scale note on the sheet, not just the first found.
+        span, ft_per_pt, canonical = max(notes, key=lambda n: n[0].confidence)
         cal = ScaleCalibration(
             sheet_id=sheet.id,
             source=ScaleSource.SCALE_NOTE,
@@ -172,22 +173,33 @@ def resolve_scale(
             source_ocr_span_ids=[span.id],
             confidence=SOURCE_BASE_CONFIDENCE[ScaleSource.SCALE_NOTE] * span.confidence,
         )
+        distinct = {round(n[1], 6) for n in notes}
+        if len(distinct) > 1:
+            # Genuinely different scales on one sheet — flag, don't silently pick.
+            cal.dimension_conflict = True
+            cal.confidence *= 0.5
+            cal.notes = f"{len(distinct)} distinct scale notes: {sorted(distinct)}"
+        elif len(notes) > 1:
+            # Several notes, all agreeing → independent corroboration.
+            cal.confidence = min(0.98, cal.confidence + 0.05)
+            cal.notes = f"{len(notes)} corroborating scale notes"
         if nts_span is not None:
             # Sheet says NTS *and* carries a scale note — a detail sheet with a
             # scaled viewport, or a conflict. Keep the note but demand review.
             cal.confidence *= 0.6
-            cal.notes = "sheet also contains an NTS marking"
+            cal.notes = (cal.notes + "; also contains an NTS marking").strip("; ")
         if known_dimension and known_dimension.usable:
             rel = abs(known_dimension.ft_per_pt - ft_per_pt) / ft_per_pt
             if rel <= 0.02:
                 cal.confidence = min(0.98, cal.confidence + 0.10)
-                cal.notes = (cal.notes + " agrees with known dimension").strip()
+                cal.notes = (cal.notes + "; agrees with known dimension").strip("; ")
             elif rel > 0.05:
+                cal.dimension_conflict = True
                 cal.confidence *= 0.5
                 cal.notes = (
-                    f"{cal.notes} CONFLICT: known dimension implies "
+                    f"{cal.notes}; known dimension implies "
                     f"{known_dimension.ft_per_pt:.6f} ft/pt vs note {ft_per_pt:.6f}"
-                ).strip()
+                ).strip("; ")
         return cal
 
     if known_dimension and known_dimension.usable:

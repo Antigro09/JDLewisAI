@@ -87,9 +87,32 @@ class TestThicknessFromNotes:
             thickness, _ = find_slab_thickness_ft([OCRSpan(sheet_id="s1", text=text, bbox=(0, 0, 1, 1))])
             assert thickness is None, text
 
+    def test_out_of_band_rejected(self):
+        # 36" (>24") and 1" (<2") are misparses, not slab depths → None → default+flag.
+        for text in ['36" CONC. SLAB', '1" SLAB']:
+            t, _ = find_slab_thickness_ft([OCRSpan(sheet_id="s1", text=text, bbox=(0, 0, 1, 1))])
+            assert t is None, text
+
     def test_no_callout(self):
         spans = [OCRSpan(sheet_id="s1", text="FLOOR PLAN", bbox=(0, 0, 1, 1))]
         assert find_slab_thickness_ft(spans) == (None, [])
+
+
+class TestMultiThickness:
+    def test_ambiguous_sheet_flagged_for_review(self):
+        from app.adapters.rollup_mock import MockRollupAdapter
+        from app.pipeline.rollup import find_slab_thicknesses, rollup_items
+
+        spans = [
+            OCRSpan(sheet_id="s1", text='4" CONC. SLAB', bbox=(0, 0, 1, 1)),
+            OCRSpan(sheet_id="s1", text='SLAB THK: 8"', bbox=(0, 0, 1, 1)),
+        ]
+        assert len(find_slab_thicknesses(spans)) == 2
+        # No geometry to disambiguate → most-common thickness + review flag,
+        # never silently apply one thickness to a multi-thickness sheet.
+        out = rollup_items([slab_item()], spans, MockRollupAdapter(), settings)
+        assert out[0].unit == "CY"
+        assert ReviewReason.MULTI_THICKNESS in out[0].review_reason
 
 
 class TestNTSRefusal:
