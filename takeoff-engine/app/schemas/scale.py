@@ -46,6 +46,9 @@ class ScaleCalibration(BaseModel):
     scale_text: str = ""                 # raw evidence, e.g. '1/8" = 1\'-0"'
     source_ocr_span_ids: list[str] = Field(default_factory=list)
     confidence: float = 0.0
+    # An independent source (known dimension, another note, PDF metadata)
+    # disagreed with this scale → route to review. Structured, not a substring.
+    dimension_conflict: bool = False
     notes: str = ""
     created_at: datetime = Field(default_factory=utcnow)
 

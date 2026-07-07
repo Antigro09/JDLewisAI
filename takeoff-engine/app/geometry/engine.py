@@ -38,6 +38,7 @@ class GeometryEngine:
         derived_from: list[str] | None = None,
         refinement: str = "",
         assume_closed: bool = True,
+        boundary_source: str = "unknown",
     ) -> PolygonGeometry:
         """Validate a candidate ring and compute deterministic area/length.
 
@@ -54,6 +55,7 @@ class GeometryEngine:
             holes=[list(h) for h in (holes or [])],
             derived_from=list(derived_from or []),
             refinement=refinement,
+            boundary_source=boundary_source,
         )
         if len(exterior) < 3:
             geom.is_closed = False
@@ -74,7 +76,19 @@ class GeometryEngine:
             else:
                 ring.append(first)  # assume_closed: the last→first edge is implied
 
-        poly = Polygon(ring, [h for h in (holes or []) if len(h) >= 3])
+        # Keep only holes that actually sit inside the exterior — a mis-traced
+        # void outside the ring would otherwise ADD area via make_valid/union.
+        ext_poly = Polygon(ring)
+        valid_holes = []
+        for h in holes or []:
+            if len(h) < 3:
+                continue
+            hp = Polygon(h)
+            if hp.is_valid and not hp.is_empty and ext_poly.contains(hp.representative_point()):
+                valid_holes.append(h)
+        if len(valid_holes) < len(holes or []):
+            geom.refinement = (geom.refinement + " + dropped out-of-bounds hole(s)").strip(" +")
+        poly = Polygon(ring, valid_holes)
         if not poly.is_valid:
             fixed = _polygonal_parts(make_valid(poly))
             if fixed is None or fixed.is_empty:

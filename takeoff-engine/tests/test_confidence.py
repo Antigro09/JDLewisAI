@@ -70,7 +70,7 @@ class TestFlagRules:
     def test_scale_dimension_conflict(self):
         conflicted = ScaleCalibration(
             sheet_id="s1", source=ScaleSource.SCALE_NOTE, ft_per_pt=8 / 72,
-            confidence=0.4, notes="CONFLICT: known dimension implies ...",
+            confidence=0.4, dimension_conflict=True,
         )
         item = finalize_item(make_item(), settings=settings, scale=conflicted, geometries={})
         assert ReviewReason.SCALE_DIMENSION_CONFLICT in item.review_reason
@@ -107,6 +107,13 @@ class TestFlagRules:
         item = finalize_item(make_item(source_geometry_ids=[g.id]), settings=settings,
                              scale=GOOD_SCALE, geometries={g.id: g}, label_detection=label)
         assert ReviewReason.LABEL_FAR_FROM_POLYGON in item.review_reason
+
+    def test_assumed_dpi_flags_and_downweights(self):
+        item = finalize_item(make_item(), settings=settings, scale=GOOD_SCALE,
+                             geometries={}, dpi_assumed=True)
+        assert ReviewReason.ASSUMED_DPI in item.review_reason
+        assert abs(item.confidence.scale - 0.85 * 0.7) < 1e-9
+        assert abs(item.confidence.geometry - 1.0 * 0.7) < 1e-9
 
     def test_low_confidence(self):
         item = finalize_item(

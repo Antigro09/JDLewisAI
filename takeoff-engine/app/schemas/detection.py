@@ -49,3 +49,6 @@ class PolygonGeometry(BaseModel):
     length_pt: float = 0.0
     derived_from: list[str] = Field(default_factory=list)  # mask/vector/detection ids
     refinement: str = ""            # e.g. "sam2_mask + vector_snap + opencv_close"
+    # Where the boundary came from — governs how much to trust the measured area.
+    # "vector" = exact CAD linework; "mask" = approximate neural segmentation.
+    boundary_source: str = "unknown"  # vector | mask | manual | unknown
