@@ -145,25 +145,26 @@ def build_adapters(settings: Settings) -> dict[str, Any]:
         vlm_qwen,
     )
 
-    def pick(transport: str, mock_cls, local_cls, remote_factory):
+    def pick(transport: str, mock_cls, local_factory, remote_factory):
         if transport == "mock":
             return mock_cls()
         if transport == "local":
             # Some adapters (the LLM/VLM endpoints) have no in-process path.
-            if local_cls is None:
+            if local_factory is None:
                 raise AdapterNotConfigured(
                     "local transport",
                     "this adapter has no in-process 'local' mode; "
                     "use TAKEOFF_*_TRANSPORT=sagemaker or openai_compat",
                 )
-            return local_cls()
+            return local_factory()
         return remote_factory()
 
     return {
+        # local factories load your DOWNLOADED weights from the *_checkpoint paths.
         "ocr": pick(
             settings.ocr_transport,
             ocr_mock.MockOCRAdapter,
-            ocr_paddle.PaddleOCRAdapter,
+            lambda: ocr_paddle.PaddleOCRAdapter(),  # PaddleOCR fetches its own weights
             lambda: ocr_paddle.PaddleOCRAdapter(
                 sagemaker_endpoint=settings.ocr_sagemaker_endpoint, region=settings.aws_region
             ),
@@ -171,7 +172,10 @@ def build_adapters(settings: Settings) -> dict[str, Any]:
         "detector": pick(
             settings.detector_transport,
             detector_mock.MockDetectorAdapter,
-            detector_rfdetr.RFDETRAdapter,
+            lambda: detector_rfdetr.RFDETRAdapter(
+                checkpoint=settings.detector_checkpoint,
+                threshold=settings.detector_threshold,
+            ),
             lambda: detector_rfdetr.RFDETRAdapter(
                 sagemaker_endpoint=settings.detector_sagemaker_endpoint,
                 region=settings.aws_region,
@@ -180,7 +184,10 @@ def build_adapters(settings: Settings) -> dict[str, Any]:
         "segmenter": pick(
             settings.segmenter_transport,
             segmenter_mock.MockSegmenterAdapter,
-            segmenter_sam2.SAM2Adapter,
+            lambda: segmenter_sam2.SAM2Adapter(
+                checkpoint=settings.segmenter_checkpoint,
+                model_cfg=settings.segmenter_model_cfg,
+            ),
             lambda: segmenter_sam2.SAM2Adapter(
                 sagemaker_endpoint=settings.segmenter_sagemaker_endpoint,
                 region=settings.aws_region,

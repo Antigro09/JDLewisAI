@@ -25,6 +25,15 @@ class TestBuildAdapters:
         )
         assert a["open_vocab_detector"] is None
 
+    def test_local_checkpoints_thread_through(self):
+        # The downloaded-weights paths from config reach the adapters.
+        a = build_adapters(_settings(
+            detector_transport="local", detector_checkpoint="/models/rfdetr.pth",
+            segmenter_transport="local", segmenter_checkpoint="/models/sam2.pt",
+        ))
+        assert a["detector"].checkpoint == "/models/rfdetr.pth"
+        assert a["segmenter"].checkpoint == "/models/sam2.pt"
+
     def test_vlm_local_raises_clear_error(self):
         # The VLM has no in-process 'local' mode — must fail loudly, not TypeError.
         with pytest.raises(AdapterNotConfigured):
