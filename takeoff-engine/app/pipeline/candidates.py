@@ -32,7 +32,13 @@ def run_candidates(
     masks = segmenter.segment(image, sheet_id, px_per_pt, [d.bbox for d in area_dets])
 
     geometries: list[PolygonGeometry] = []
-    for det, mask in zip(area_dets, masks, strict=False):
+    for mask in masks:
+        # Associate each mask to its prompt box by index (segmenters may reorder
+        # or fall back), never by positional zip which misaligns on any drop.
+        idx = mask.source_box_index
+        det = area_dets[idx] if 0 <= idx < len(area_dets) else None
+        if det is None:
+            continue
         mask.detected_object_id = det.id
         if not mask.polygons:
             continue

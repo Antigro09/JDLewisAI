@@ -41,6 +41,17 @@ class TestParseScaleNote:
         assert ft_per_pt == pytest.approx(ft_per_in / PT_PER_IN)
         assert canonical
 
+    def test_hyphenated_mixed_number(self):
+        # '1-1/2" = 1'-0"' must parse as 1.5", not grab the '1/2' (which mis-scaled 3x).
+        ft_per_pt, _ = parse_scale_note("1-1/2\" = 1'-0\"")
+        assert ft_per_pt == pytest.approx((2 / 3) / PT_PER_IN)  # 1'-0" over 1.5"
+
+    def test_detail_scale_not_rejected(self):
+        # A near-full-scale detail (12" = 1'-0") must pass the sanity floor.
+        ft_per_pt, canonical = parse_scale_note("12\" = 1'-0\"")
+        assert ft_per_pt == pytest.approx((1 / 12) / PT_PER_IN)
+        assert canonical
+
     @pytest.mark.parametrize(("text", "ratio"), [("1:100", 100), ("1:50", 50), ("1 : 20", 20)])
     def test_metric_ratios(self, text, ratio):
         ft_per_pt, canonical = parse_scale_note(text)

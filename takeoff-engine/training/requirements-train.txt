@@ -1,0 +1,19 @@
+# Training-only dependencies (kept out of the core install).
+# Install into the takeoff-engine venv on a GPU box:
+#   pip install -r training/requirements-train.txt
+
+# Detector (RF-DETR) — PRIORITY 1
+rfdetr>=1.0
+torch>=2.2
+torchvision>=0.17
+supervision>=0.22        # rf-detr returns sv.Detections
+
+# Segmentation (SegFormer) — PRIORITY 2
+transformers>=4.44
+datasets>=2.20
+pillow>=10.0
+numpy>=1.26
+
+# Sheet-type classifier — PRIORITY 3
+scikit-learn>=1.4
+joblib>=1.3

@@ -31,6 +31,7 @@ class SegmentationMask(BaseModel):
     confidence: float = 0.0
     segmenter: str = "sam2"
     prompt_kind: str = "box"       # box | points
+    source_box_index: int = -1     # index of the prompt box this mask came from
     line_overreach_ratio: float = 0.0  # fraction of mask boundary crossing unrelated linework
 
 

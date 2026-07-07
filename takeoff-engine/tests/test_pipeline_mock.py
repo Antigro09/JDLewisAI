@@ -127,3 +127,47 @@ class TestPipeline:
         )
         assert r.status_code == 201
         assert r.json()["ft_per_pt"] == pytest.approx(10 / 90)
+
+
+class TestReprocess:
+    """Its own project so it doesn't interact with the module-shared one."""
+
+    def _run(self, client, proj):
+        job = client.post(f"/api/projects/{proj}/process").json()["job_id"]
+        import time
+
+        for _ in range(160):
+            st = client.get(f"/api/jobs/{job}").json()["status"]
+            if st in ("done", "failed"):
+                return st
+            time.sleep(0.25)
+        return "timeout"
+
+    def test_idempotent_reprocess_and_manual_calibration(self, client, tmp_path_factory):
+        pdf = make_fixture(tmp_path_factory.mktemp("reproc") / "plan.pdf")
+        proj = client.post("/api/projects", json={"name": "reproc"}).json()["id"]
+        with open(pdf, "rb") as f:
+            client.post(f"/api/projects/{proj}/files",
+                        files={"file": ("plan.pdf", f, "application/pdf")})
+
+        assert self._run(client, proj) == "done"
+        first = client.get(f"/api/projects/{proj}/quantities").json()
+        assert len(first) >= 1
+        area = next(q for q in first if q["unit"] in ("SF", "CY"))
+
+        # Re-process: stable ids → same rows, no duplication.
+        assert self._run(client, proj) == "done"
+        second = client.get(f"/api/projects/{proj}/quantities").json()
+        assert len(second) == len(first)
+        assert {q["id"] for q in second} == {q["id"] for q in first}
+
+        # A manual two-click calibration must actually change the measurement.
+        sheet = client.get(f"/api/projects/{proj}/sheets").json()[0]
+        client.post(f"/api/sheets/{sheet['id']}/calibrate",
+                    json={"p1": [0, 0], "p2": [90, 0], "real_distance_ft": 100})
+        assert self._run(client, proj) == "done"
+        after = {q["id"]: q for q in client.get(f"/api/projects/{proj}/quantities").json()}
+        assert after[area["id"]]["quantity"] != area["quantity"]
+        # And the scale the item cites is now the manual one.
+        overlay = client.get(f"/api/sheets/{sheet['id']}/overlay").json()
+        assert overlay["scale"]["source"] == "manual"

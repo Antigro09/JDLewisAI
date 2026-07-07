@@ -81,21 +81,16 @@ class RFDETRAdapter(DetectorAdapter):
         return out
 
     def _detect_remote(self, image, sheet_id, px_per_pt) -> list[DetectedObject]:
-        import base64
+        from app.adapters.transport import encode_image_capped
 
-        import cv2
-
-        ok, buf = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 92])
-        if not ok:
-            raise RuntimeError("failed to encode image for detector endpoint")
-        resp = self.transport.invoke(
-            {"image_b64": base64.b64encode(buf.tobytes()).decode(), "threshold": self.threshold}
-        )
+        b64, scale = encode_image_capped(image, ".jpg")
+        eff = px_per_pt * scale  # returned bbox_px are in the (downscaled) sent frame
+        resp = self.transport.invoke({"image_b64": b64, "threshold": self.threshold})
         return [
             DetectedObject(
                 sheet_id=sheet_id,
                 label=d["label"],
-                bbox=tuple(v / px_per_pt for v in d["bbox_px"]),
+                bbox=tuple(v / eff for v in d["bbox_px"]),
                 confidence=d["confidence"],
                 detector=self.name,
             )

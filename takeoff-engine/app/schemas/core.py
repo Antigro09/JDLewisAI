@@ -73,6 +73,8 @@ class RasterPage(BaseModel):
     height_px: int
     image_path: str           # storage-relative path (PNG)
     source: str = "pdf_render"  # pdf_render | tiff_native
+    native_dpi: tuple[float, float] | None = None  # TIFF: (x, y) DPI actually used
+    dpi_assumed: bool = False   # True when no DPI tag was found → scale is a guess
     created_at: datetime = Field(default_factory=utcnow)
 
     @property

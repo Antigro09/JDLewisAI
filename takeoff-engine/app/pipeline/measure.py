@@ -100,7 +100,8 @@ def derive_concrete_volume(item: QuantityItem, thickness_ft: float,
     if thickness_source == "default":
         # A guessed thickness is exactly the kind of silent assumption we refuse.
         item.needs_review = True
-        item.review_reason.append(ReviewReason.LOW_CONFIDENCE)
+        if ReviewReason.LOW_CONFIDENCE not in item.review_reason:
+            item.review_reason.append(ReviewReason.LOW_CONFIDENCE)
         item.formula += " (thickness DEFAULTED — verify)"
     return item
 

@@ -42,6 +42,24 @@ class TestBuildPolygon:
         assert g.area_pt2 > 0
         assert "make_valid" in g.refinement
 
+    def test_make_valid_geometry_collection_recovered(self):
+        # A square with a zero-width dangling spike: make_valid returns a
+        # GeometryCollection (polygon + stray line). The polygonal area must be
+        # recovered, not discarded to zero.
+        spiked = [(0, 0), (100, 0), (100, 100), (0, 100), (0, 50), (-50, 50), (0, 50)]
+        g = engine.build_polygon("s1", spiked)
+        assert g.is_valid
+        assert g.area_pt2 == pytest.approx(10_000.0)
+        assert "make_valid" in g.refinement
+
+    def test_snapped_vector_ring_has_no_sliver(self):
+        # Near-closed vector chain: the seam must collapse, not add a sliver
+        # vertex that dents the area.
+        ring = [(0, 0), (100, 0), (100, 100), (0, 100), (0.5, 1.5)]  # ~1.6pt gap
+        g = engine.build_polygon("s1", ring, assume_closed=False)
+        assert g.is_closed
+        assert g.area_pt2 == pytest.approx(10_000.0, rel=0.01)
+
 
 class TestSpatialRelations:
     def test_label_inside_polygon(self):

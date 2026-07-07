@@ -28,28 +28,29 @@ class TiffIngestor:
                       source_file: str) -> Sheet:
         with Image.open(tiff_path) as im:
             im.seek(page_number - 1)
-            dpi = self._dpi(im)
+            dpi_x, dpi_y, _ = self._dpi_xy(im)
             return Sheet(
                 project_id=project_id,
                 source_file=source_file,
                 page_number=page_number,
-                width_pt=im.width * 72.0 / dpi,
-                height_pt=im.height * 72.0 / dpi,
+                # Per-axis DPI so anisotropic scans (e.g. 300×150) keep true aspect.
+                width_pt=im.width * 72.0 / dpi_x,
+                height_pt=im.height * 72.0 / dpi_y,
             )
 
     def render_page(self, tiff_path: Path, page_number: int, sheet_id: str,
                     dpi: int, out_path: Path) -> RasterPage:
-        """`dpi` is the requested working DPI; the frame is resampled to it so
-        px_per_pt stays consistent with PDF renders."""
+        """`dpi` is the requested working DPI; the frame is resampled to a
+        uniform square DPI on both axes so px_per_pt = dpi/72 holds exactly."""
         with Image.open(tiff_path) as im:
             im.seek(page_number - 1)
-            native_dpi = self._dpi(im)
+            dpi_x, dpi_y, assumed = self._dpi_xy(im)
             frame = im.convert("RGB")
-            if abs(native_dpi - dpi) > 1:
-                scale = dpi / native_dpi
-                frame = frame.resize(
-                    (max(1, round(im.width * scale)), max(1, round(im.height * scale)))
-                )
+            # Resample each axis by its own factor → uniform `dpi` output.
+            tw = max(1, round(im.width * dpi / dpi_x))
+            th = max(1, round(im.height * dpi / dpi_y))
+            if (tw, th) != (frame.width, frame.height):
+                frame = frame.resize((tw, th))
             out_path.parent.mkdir(parents=True, exist_ok=True)
             frame.save(out_path, "PNG")
             return RasterPage(
@@ -59,10 +60,16 @@ class TiffIngestor:
                 height_px=frame.height,
                 image_path=str(out_path),
                 source="tiff_native",
+                native_dpi=(dpi_x, dpi_y),
+                dpi_assumed=assumed,  # true when the DPI tag was missing → measurements suspect
             )
 
-    def _dpi(self, im: Image.Image) -> float:
+    def _dpi_xy(self, im: Image.Image) -> tuple[float, float, bool]:
+        """(x_dpi, y_dpi, assumed). `assumed` is True when the file carried no
+        usable DPI tag and DEFAULT_TIFF_DPI was substituted — provenance the
+        rest of the system can surface, since an assumed DPI mis-scales."""
         dpi = im.info.get("dpi")
         if dpi and dpi[0] and float(dpi[0]) > 1:
-            return float(dpi[0])
-        return float(DEFAULT_TIFF_DPI)
+            dpi_y = float(dpi[1]) if len(dpi) > 1 and dpi[1] and float(dpi[1]) > 1 else float(dpi[0])
+            return float(dpi[0]), dpi_y, False
+        return float(DEFAULT_TIFF_DPI), float(DEFAULT_TIFF_DPI), True

@@ -4,6 +4,7 @@ from app.config import Settings
 from app.geometry.engine import GeometryEngine
 from app.pipeline.measure import derive_concrete_volume, measure_area_item
 from app.pipeline.rollup import find_slab_thickness_ft
+from app.schemas.confidence import ReviewReason
 from app.schemas.core import Sheet
 from app.schemas.ocr import OCRSpan
 from app.schemas.scale import ScaleCalibration, ScaleSource
@@ -75,6 +76,31 @@ class TestThicknessFromNotes:
         thickness, _ = find_slab_thickness_ft(spans)
         assert thickness == pytest.approx(6 / 12)
 
+    def test_thk_keyword_forms(self):
+        for text, ft in [('6" THK SLAB', 0.5), ('SLAB THK: 8"', 8 / 12)]:
+            thickness, _ = find_slab_thickness_ft([OCRSpan(sheet_id="s1", text=text, bbox=(0, 0, 1, 1))])
+            assert thickness == pytest.approx(ft), text
+
+    def test_rejects_rebar_spacing(self):
+        # The #4 bars at 16" O.C. must NOT be misread as a 16" slab (would ~4x the CY).
+        for text in ['SLAB W/ #4 @ 16" O.C.', 'SLAB REINF #5 @ 12" OC', 'SLAB: #4 @ 18" o.c.']:
+            thickness, _ = find_slab_thickness_ft([OCRSpan(sheet_id="s1", text=text, bbox=(0, 0, 1, 1))])
+            assert thickness is None, text
+
     def test_no_callout(self):
         spans = [OCRSpan(sheet_id="s1", text="FLOOR PLAN", bbox=(0, 0, 1, 1))]
         assert find_slab_thickness_ft(spans) == (None, [])
+
+
+class TestNTSRefusal:
+    def test_area_item_refused_on_nts(self):
+        nts = ScaleCalibration(sheet_id="s1", source=ScaleSource.NTS, ft_per_pt=None)
+        geom = engine.build_polygon("s1", [(0, 0), (90, 0), (90, 90), (0, 90)])
+        item = measure_area_item(
+            project_id="p1", sheet=make_sheet(), geometry=geom, scale=nts,
+            detection=None, item_type="flooring", settings=settings,
+        )
+        assert item.quantity == 0.0
+        assert item.needs_review
+        assert ReviewReason.NTS_SHEET in item.review_reason
+        assert "unmeasured" in item.formula

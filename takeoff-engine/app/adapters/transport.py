@@ -29,6 +29,31 @@ class AdapterNotConfigured(RuntimeError):
         super().__init__(f"{what} is not configured. {how}")
 
 
+def encode_image_capped(image, ext: str = ".jpg", max_dim: int = 2600, jpeg_quality: int = 90):
+    """Base64-encode an image, downscaling the longest side to ``max_dim`` so the
+    payload stays under SageMaker serverless's ~6 MB synchronous invoke limit.
+
+    Returns ``(b64, scale)`` where ``scale = encoded_px / original_px``. Callers
+    MUST divide returned pixel coordinates by ``px_per_pt * scale`` (and multiply
+    any sent pixel coordinates by ``scale``) so geometry lands in page points.
+    """
+    import base64
+
+    import cv2
+
+    h, w = image.shape[:2]
+    longest = max(h, w)
+    scale = 1.0
+    if longest > max_dim:
+        scale = max_dim / longest
+        image = cv2.resize(image, (max(1, round(w * scale)), max(1, round(h * scale))))
+    params = [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality] if ext.lower() in (".jpg", ".jpeg") else []
+    ok, buf = cv2.imencode(ext, image, params)
+    if not ok:
+        raise RuntimeError(f"failed to encode image ({ext})")
+    return base64.b64encode(buf.tobytes()).decode(), scale
+
+
 class ModelTransport(ABC):
     @abstractmethod
     def invoke(self, payload: dict[str, Any]) -> dict[str, Any]:

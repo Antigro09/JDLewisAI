@@ -14,6 +14,18 @@ from app.schemas.detection import PolygonGeometry
 Coords = list[tuple[float, float]]
 
 
+def _polygonal_parts(g):
+    """Extract the polygonal part(s) of any geometry make_valid() returns.
+    A self-intersecting ring can come back as a GeometryCollection (polygon +
+    stray line); keep only the polygon area instead of discarding it as zero."""
+    if g.is_empty:
+        return None
+    if g.geom_type in ("Polygon", "MultiPolygon"):
+        return g
+    parts = [p for p in getattr(g, "geoms", []) if p.geom_type in ("Polygon", "MultiPolygon")]
+    return unary_union(parts) if parts else None
+
+
 class GeometryEngine:
     # Endpoints closer than this (page points; ~1/24 inch of paper) are snapped closed.
     CLOSE_TOLERANCE_PT = 3.0
@@ -50,20 +62,22 @@ class GeometryEngine:
 
         first, last = exterior[0], exterior[-1]
         ring = list(exterior)
-        if not assume_closed and first != last:
+        if first != last:
             gap = math.dist(first, last)
-            if gap > self.CLOSE_TOLERANCE_PT:
+            if not assume_closed and gap > self.CLOSE_TOLERANCE_PT:
                 geom.is_closed = False
                 geom.is_valid = False
                 geom.length_pt = LineString(ring).length
                 return geom
-        if first != last:
-            ring.append(first)
+            if not assume_closed:
+                ring[-1] = first  # snap: collapse the near-duplicate seam (no sliver vertex)
+            else:
+                ring.append(first)  # assume_closed: the last→first edge is implied
 
         poly = Polygon(ring, [h for h in (holes or []) if len(h) >= 3])
         if not poly.is_valid:
-            fixed = make_valid(poly)
-            if fixed.geom_type not in ("Polygon", "MultiPolygon") or fixed.is_empty:
+            fixed = _polygonal_parts(make_valid(poly))
+            if fixed is None or fixed.is_empty:
                 geom.is_valid = False
                 return geom
             poly = fixed

@@ -39,7 +39,9 @@ for file in project.files:
         items  = [measure_area_item(g, scale) for g in geoms]        # SF
         items += [count_symbols(dets, label) for label in ("door", "window")]
 
-        # 7. confidence + review flags (all 10 rules; flags only accumulate)
+        # 7. confidence + review flags (flags only accumulate, never clear;
+        #    VERSION_DELTA/SCHEDULE_PLAN_MISMATCH fire only once versioning /
+        #    schedule-linking supply their inputs)
         for item in items: finalize_item(item, scale, geoms, masks)
 
         # 8. VLM audit — flagged items only, structured decisions, no numbers
