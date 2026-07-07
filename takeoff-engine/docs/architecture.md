@@ -30,10 +30,14 @@ for file in project.files:
         scale = resolve_scale(sheet, spans,
                               pdf_metadata, known_dimension_calibration)
 
-        # 5. candidates
-        dets  = DetectorAdapter.detect(raster)        # boxes
-        masks = SegmenterAdapter.segment(raster, boxes=area_boxes(dets))
-        geoms = [GeometryEngine.build_polygon(largest_ring(m)) for m in masks]
+        # 5. candidates — boxes LOCATE; the boundary comes from real geometry
+        dets  = DetectorAdapter.detect(raster)                 # boxes
+        faces = polygonize_faces(vectors)                      # exact CAD faces
+        masks = SegmenterAdapter.segment(raster, area_boxes(dets))  # raster fallback
+        geoms = [GeometryEngine.build_polygon(
+                     face_for_detection(faces, d.bbox, d.label)  # vector, else…
+                     or largest_ring(mask_for(d)))               # …mask
+                 for d in area_dets]
 
         # 6. deterministic measurement — the ONLY source of numbers
         items  = [measure_area_item(g, scale) for g in geoms]        # SF
@@ -62,8 +66,7 @@ for file in project.files:
 Pydantic schemas in `app/schemas/`: `Project`, `Sheet`, `RasterPage`,
 `VectorPath`, `OCRSpan`, `OCRTable`, `DrawingViewport`, `ScaleCalibration`,
 `DetectedObject`, `SegmentationMask`, `PolygonGeometry`, `QuantityItem`,
-`AssemblyMapping`, `ReviewDecision`, `ExportJob`, plus `ConfidenceBundle` /
-`ReviewReason`.
+`ReviewDecision`, `ExportJob`, plus `ConfidenceBundle` / `ReviewReason`.
 
 DB tables (`app/db/orm.py`) store indexed key columns + the full payload as
 JSON; `artifacts` is a polymorphic table keyed by `kind`. The evidence chain:

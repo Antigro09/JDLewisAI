@@ -76,12 +76,13 @@ class TestPipeline:
         quantities = client.get(f"/api/projects/{processed_project}/quantities").json()
         slabs = [q for q in quantities if q["item_type"] == "concrete_slab" and q["unit"] == "CY"]
         assert slabs, f"no slab CY item in {[q['item_type'] for q in quantities]}"
-        # Largest slab ≈ the 40x30 outline: 1200 SF × 4"/12 / 27 ≈ 14.8 CY.
-        # Mock detector/segmenter are approximate — generous tolerance; the
-        # exactness lives in the unit tests, this asserts end-to-end plumbing.
         slab = max(slabs, key=lambda q: q["quantity"])
-        assert slab["quantity"] == pytest.approx(14.8, rel=0.25)
-        assert "/ 27" in slab["formula"]
+        # The fixture draws the slab as REAL vector linework, so the area comes
+        # from the exact CAD face, not an approximate mask: 40×30 = 1200 SF, at
+        # 4" → 1200 × (1/3) / 27 = 14.81 CY. This is the vector-first accuracy win.
+        assert slab["attributes"]["boundary_source"] == "vector"
+        assert slab["quantity"] == pytest.approx(14.81, abs=0.05)
+        assert "vector boundary" in slab["formula"] and "/ 27" in slab["formula"]
         assert slab["attributes"]["thickness_source"] == "callout"  # from '4" CONC. SLAB'
         assert slab["source_geometry_ids"] and slab["scale_id"]
         assert slab["csi_code"] == "03 30 00"

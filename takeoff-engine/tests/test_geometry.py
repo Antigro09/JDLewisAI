@@ -60,6 +60,18 @@ class TestBuildPolygon:
         assert g.is_closed
         assert g.area_pt2 == pytest.approx(10_000.0, rel=0.01)
 
+    def test_hole_inside_subtracted(self):
+        hole = [(25, 25), (75, 25), (75, 75), (25, 75)]
+        g = engine.build_polygon("s1", SQUARE, holes=[hole])
+        assert g.area_pt2 == pytest.approx(10_000.0 - 2_500.0)
+
+    def test_hole_outside_exterior_dropped(self):
+        # A mis-traced void outside the ring must NOT subtract (or add) area.
+        outside = [(200, 200), (210, 200), (210, 210), (200, 210)]
+        g = engine.build_polygon("s1", SQUARE, holes=[outside])
+        assert g.area_pt2 == pytest.approx(10_000.0)
+        assert "dropped out-of-bounds hole" in g.refinement
+
 
 class TestSpatialRelations:
     def test_label_inside_polygon(self):

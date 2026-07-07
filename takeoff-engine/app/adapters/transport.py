@@ -2,10 +2,11 @@
 
 Every model adapter talks to its backend through a ModelTransport so the same
 adapter code runs against:
-  - MockTransport        — canned responses; zero model downloads.
   - SageMakerTransport   — AWS SageMaker serverless/real-time endpoints
                            (the primary hosted path for this project).
   - OpenAICompatTransport— any OpenAI-compatible HTTP server (vLLM, TGI).
+(Mock behaviour lives at the adapter layer — MockOCRAdapter, MockDetectorAdapter,
+etc. — selected by build_adapters(), so no mock transport is needed.)
 
 SageMaker serverless caveats (documented in docs/adapters.md):
   - synchronous invoke payload limit is ~6 MB → send region CROPS, not full
@@ -59,16 +60,6 @@ class ModelTransport(ABC):
     def invoke(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Send a JSON-serializable payload, get a JSON dict back.
         Binary image data must be base64-encoded inside the payload."""
-
-
-class MockTransport(ModelTransport):
-    def __init__(self, responder=None):
-        self.responder = responder
-        self.calls: list[dict[str, Any]] = []
-
-    def invoke(self, payload: dict[str, Any]) -> dict[str, Any]:
-        self.calls.append(payload)
-        return self.responder(payload) if self.responder else {}
 
 
 class SageMakerTransport(ModelTransport):

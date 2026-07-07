@@ -35,9 +35,20 @@ def measure_area_item(
     description: str = "",
 ) -> QuantityItem:
     """Room/slab polygon → SF item (slab items get thickness→CY downstream)."""
+    # Geometry confidence reflects the boundary SOURCE: an exact CAD vector face
+    # is trusted; an approximate neural mask contour is capped well below 1 so a
+    # mask-derived area can never read as high-confidence.
+    if not (geometry.is_closed and geometry.is_valid):
+        geometry_conf = 0.0
+    elif geometry.boundary_source == "vector":
+        geometry_conf = 1.0
+    elif geometry.boundary_source == "mask":
+        geometry_conf = 0.6
+    else:
+        geometry_conf = 0.8
     conf = ConfidenceBundle(
         scale=scale.confidence,
-        geometry=1.0 if (geometry.is_closed and geometry.is_valid) else 0.0,
+        geometry=geometry_conf,
         detector=detection.confidence if detection else 0.5,
     )
     item = QuantityItem(
@@ -75,8 +86,10 @@ def measure_area_item(
     sqft = sqft_from_pt2(geometry.area_pt2, scale.ft_per_pt)
     item.quantity = round(sqft, 1)
     item.measurement_confidence = conf.geometry
+    item.attributes["boundary_source"] = geometry.boundary_source
     item.formula = (
-        f"SF = {geometry.area_pt2:.1f} pt² × ({scale.ft_per_pt:.6f} ft/pt)² = {sqft:.1f}"
+        f"SF = {geometry.area_pt2:.1f} pt² × ({scale.ft_per_pt:.6f} ft/pt)² = {sqft:.1f} "
+        f"[{geometry.boundary_source} boundary]"
     )
     if not (settings.min_polygon_area_sqft <= sqft <= settings.max_polygon_area_sqft):
         item.needs_review = True

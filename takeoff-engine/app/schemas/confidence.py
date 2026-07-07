@@ -8,7 +8,7 @@ rather than averaging (averaging hides a broken link behind good ones).
 
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ReviewReason(str, Enum):
@@ -24,6 +24,8 @@ class ReviewReason(str, Enum):
     IMPLAUSIBLE_MEASUREMENT = "implausible_measurement"
     VLM_FLAGGED = "vlm_flagged"
     MANUAL_CALIBRATION_REQUIRED = "manual_calibration_required"
+    ASSUMED_DPI = "assumed_dpi"  # TIFF with no DPI tag → scale is a guess
+    MULTI_THICKNESS = "multi_thickness"  # >1 distinct slab thickness, unresolved
 
 
 class ConfidenceBundle(BaseModel):
@@ -41,13 +43,3 @@ class ConfidenceBundle(BaseModel):
         for p in parts:
             product *= p
         return round(0.6 * lowest + 0.4 * product, 4)
-
-
-class ReviewFlags(BaseModel):
-    needs_review: bool = False
-    reasons: list[ReviewReason] = Field(default_factory=list)
-
-    def flag(self, reason: ReviewReason) -> None:
-        self.needs_review = True
-        if reason not in self.reasons:
-            self.reasons.append(reason)

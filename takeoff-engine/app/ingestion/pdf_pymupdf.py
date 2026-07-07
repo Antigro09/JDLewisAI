@@ -102,13 +102,21 @@ class PyMuPDFIngestor:
                                 subpaths.append(current)
                             current = [(p1.x, p1.y)]
                         current.append((p2.x, p2.y))
-                    elif op == "c":  # curve: endpoints only
-                        p1, p4 = item[1], item[4]
+                    elif op == "c":  # cubic Bézier — subdivide so curved walls
+                        p1, c1, c2, p4 = item[1], item[2], item[3], item[4]
                         if not current or current[-1] != (p1.x, p1.y):
                             if current:
                                 subpaths.append(current)
                             current = [(p1.x, p1.y)]
-                        current.append((p4.x, p4.y))
+                        # measure to the true arc, not the chord (feeds polygonize)
+                        chord = math.dist((p1.x, p1.y), (p4.x, p4.y))
+                        n = max(2, min(16, math.ceil(chord / 4.0)))
+                        for i in range(1, n + 1):  # t in (0, 1], endpoint p4 appended once
+                            t = i / n
+                            mt = 1.0 - t
+                            x = mt**3 * p1.x + 3 * mt**2 * t * c1.x + 3 * mt * t**2 * c2.x + t**3 * p4.x
+                            y = mt**3 * p1.y + 3 * mt**2 * t * c1.y + 3 * mt * t**2 * c2.y + t**3 * p4.y
+                            current.append((x, y))
                     elif op == "re":  # rectangle
                         r = item[1]
                         if current:

@@ -31,12 +31,20 @@ This system does **not** claim 100% accuracy. Every quantity carries a confidenc
                             NTS sheets → measurement REFUSED. Every quantity
                             records scale_source + scale_confidence.
       ↓
-[Candidate detection]       RF-DETR (non-YOLO, Apache-2.0) boxes; GroundingDINO
-                            optional open-vocab; SAM 2 masks from box prompts;
-                            OpenCV + vector linework refine boundaries.
+[Candidate detection]       RF-DETR (non-YOLO, Apache-2.0) boxes LOCATE regions;
+                            GroundingDINO optional open-vocab; SAM 2 masks are the
+                            raster fallback only.
       ↓
-[Deterministic measurement] Shapely polygons: closure validation, areas, lengths,
-                            counts, CY. Implausible values rejected. This stage —
+[Deterministic measurement] Boundary source, most-trusted first:
+                              1. VECTOR linework — the drawing's real CAD polygons
+                                 (shapely.polygonize faces matched to each box).
+                                 Exact; needs no model. Used whenever the PDF has
+                                 linework.
+                              2. neural MASK contour — only on raster sheets with
+                                 no vectors (capped confidence, flagged).
+                              3. manual polygon correction in review.
+                            Shapely then computes areas/lengths/counts/CY; holes
+                            validated; implausible values rejected. This stage —
                             and only this stage — produces numbers.
       ↓
 [VLM audit]                 Qwen3-VL answers multiple-choice ambiguity questions

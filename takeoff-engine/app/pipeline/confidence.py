@@ -32,6 +32,7 @@ def finalize_item(
     label_detection: DetectedObject | None = None,
     previous_quantity: float | None = None,
     schedule_plan_mismatch: bool = False,
+    dpi_assumed: bool = False,
 ) -> QuantityItem:
     def flag(reason: ReviewReason):
         item.needs_review = True
@@ -49,14 +50,21 @@ def finalize_item(
             # A source exists but is unusable/weak.
             flag(ReviewReason.NO_RELIABLE_SCALE)
 
+        # Assumed TIFF DPI mis-scales area (squared) → must go to review, and the
+        # scale/geometry slots drop so it can never read as high-confidence.
+        if dpi_assumed:
+            flag(ReviewReason.ASSUMED_DPI)
+            item.confidence.scale *= 0.7
+            item.confidence.geometry *= 0.7
+
     # 3. open polygons
     for gid in item.source_geometry_ids:
         g = geometries.get(gid)
         if g is not None and g.kind == "polygon" and not g.is_closed:
             flag(ReviewReason.OPEN_POLYGON)
 
-    # 4. OCR scale conflicts with known dimensions (recorded by the resolver)
-    if "CONFLICT" in scale.notes:
+    # 4. scale note conflicts with an independent source (set by the resolver)
+    if scale.dimension_conflict:
         flag(ReviewReason.SCALE_DIMENSION_CONFLICT)
 
     # 5. schedule vs plan tag disagreement (set by schedule-linking logic)

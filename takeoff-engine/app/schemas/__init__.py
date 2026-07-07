@@ -10,12 +10,11 @@ from app.schemas.core import (
 from app.schemas.detection import DetectedObject, PolygonGeometry, SegmentationMask
 from app.schemas.export import ExportJob
 from app.schemas.ocr import OCRSpan, OCRTable
-from app.schemas.quantity import AssemblyMapping, QuantityItem
+from app.schemas.quantity import QuantityItem
 from app.schemas.review import ReviewDecision
 from app.schemas.scale import ScaleCalibration, ScaleSource
 
 __all__ = [
-    "AssemblyMapping",
     "ConfidenceBundle",
     "DetectedObject",
     "DrawingViewport",
