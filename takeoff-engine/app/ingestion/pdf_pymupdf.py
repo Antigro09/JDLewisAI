@@ -12,12 +12,30 @@ permissive licenses) — both implement the same PdfIngestor interface.
 from __future__ import annotations
 
 import math
+import re
 from pathlib import Path
 
 import fitz  # PyMuPDF
 
 from app.schemas.core import RasterPage, Sheet, VectorPath
 from app.schemas.ocr import OCRSpan
+
+
+def _dash_array(raw) -> list[float]:
+    if raw in (None, "", ()):
+        return []
+    if isinstance(raw, str):
+        values = [float(n) for n in re.findall(r"\d+(?:\.\d+)?", raw)]
+        return [v for v in values if v > 0]
+    if isinstance(raw, (list, tuple)):
+        out = []
+        for v in raw:
+            if isinstance(v, (int, float)):
+                out.append(float(v))
+            elif isinstance(v, (list, tuple)):
+                out.extend(float(x) for x in v if isinstance(x, (int, float)))
+        return [v for v in out if v > 0]
+    return []
 
 
 class PyMuPDFIngestor:
@@ -79,7 +97,7 @@ class PyMuPDFIngestor:
         return spans
 
     def extract_vector_paths(self, pdf_path: Path, page_number: int, sheet_id: str,
-                             max_paths: int = 20000) -> list[VectorPath]:
+                             max_paths: int = 80000) -> list[VectorPath]:
         """Vector linework via page.get_drawings(). Curves are flattened to
         their endpoints — good enough for wall/boundary snapping; refine later
         if curved geometry becomes a takeoff target."""
@@ -145,7 +163,10 @@ class PyMuPDFIngestor:
                 xs = [p[0] for sp in subpaths for p in sp]
                 ys = [p[1] for sp in subpaths for p in sp]
                 # Stroke color, falling back to fill color for fill-only paths.
+                # The fill color is kept separately: a gray-filled wall band with
+                # a black outline (kind fill_stroke) must still read as gray.
                 color = drawing.get("color") or drawing.get("fill")
+                fill = drawing.get("fill")
                 paths.append(
                     VectorPath(
                         sheet_id=sheet_id,
@@ -159,6 +180,10 @@ class PyMuPDFIngestor:
                         color=(
                             "#" + "".join(f"{int(c * 255):02x}" for c in color) if color else ""
                         ),
+                        fill_color=(
+                            "#" + "".join(f"{int(c * 255):02x}" for c in fill) if fill else ""
+                        ),
+                        dashes=_dash_array(drawing.get("dashes")),
                         bbox=(min(xs), min(ys), max(xs), max(ys)),
                     )
                 )

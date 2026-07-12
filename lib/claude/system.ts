@@ -30,6 +30,26 @@ real (don't just print the content) and share the resulting link. Read tools run
 create/edit/send actions are shown to the user for one-click approval before they run, so go ahead
 and call them when appropriate. After acting, briefly confirm what you did and include the link.`;
 
+export const TOOLS_ORCHESTRATION_NOTE = `Specialized tools & deterministic engines. You have
+tools that perform real work — do NOT do their job yourself. When a request matches a tool's
+capability, call the tool instead of estimating or reasoning out an answer.
+
+- Material takeoffs & quantities from drawings: when the user attaches a construction drawing set
+  (PDF/TIFF) and asks to "do a takeoff", "count the doors/windows", "measure the walls", "estimate
+  drywall/framing", or "how many X are on these plans", call "material_takeoff". It starts the
+  takeoff engine and returns a review link — it does NOT return counts. Afterward (or when the user
+  asks "how many…", "is it done?"), call "get_takeoff_results" to read the engine's numbers.
+- NEVER fabricate or infer counts, measurements, scales, or quantities. State ONLY numbers that
+  came back in a tool result. If a takeoff is still processing or in review, say so and give no
+  numbers — offer the review link instead of guessing.
+- If a tool needs a file the user hasn't attached (e.g. drawings for a takeoff), ask for it before
+  calling the tool.
+- After a tool runs, explain the result in plain language; never dump raw tool JSON at the user.
+
+Examples: "Make a takeoff from this PDF" → material_takeoff. "How many doors are here?" (drawings
+attached or a takeoff already running) → material_takeoff then get_takeoff_results. "What is
+drywall?" → just answer, no tool.`;
+
 /** Exact fence markers wrapped around external tool output (lib/claude/agent.ts).
  * The wrapper neutralizes any occurrence of these strings inside the payload,
  * so a fence can only ever be opened/closed by our own code. */
@@ -102,7 +122,7 @@ export function buildSystemPrompt(opts: {
   skillsPrompt?: string;
   memoryPrompt?: string;
 }): string {
-  const parts = [BASE_SYSTEM];
+  const parts = [BASE_SYSTEM, TOOLS_ORCHESTRATION_NOTE];
 
   if (opts.googleEnabled) parts.push(GOOGLE_TOOLS_NOTE, UNTRUSTED_CONTENT_NOTE);
   if (opts.memoryPrompt) parts.push(opts.memoryPrompt);

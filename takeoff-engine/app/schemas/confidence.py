@@ -26,6 +26,7 @@ class ReviewReason(str, Enum):
     MANUAL_CALIBRATION_REQUIRED = "manual_calibration_required"
     ASSUMED_DPI = "assumed_dpi"  # TIFF with no DPI tag → scale is a guess
     MULTI_THICKNESS = "multi_thickness"  # >1 distinct slab thickness, unresolved
+    WALL_DETAIL_MISSING = "wall_detail_missing"
 
 
 class ConfidenceBundle(BaseModel):

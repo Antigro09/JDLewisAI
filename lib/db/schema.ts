@@ -16,6 +16,8 @@ import {
 export type Role = "ADMIN" | "MEMBER";
 export type InvoiceStatus = "APPROVED" | "NEEDS_REVIEW" | "DENIED" | "PENDING";
 export type CompanyRole = "OWNER" | "ADMIN" | "MEMBER";
+export type TakeoffStatus = "created" | "uploading" | "indexing" | "indexed" | "processing" | "review" | "failed";
+export type EngineJobStatus = "queued" | "running" | "done" | "failed";
 /**
  * Meeting lifecycle. All writes go through `transitionMeeting` in
  * lib/meetings/state.ts (compare-and-swap) — never set `status` directly.
@@ -471,6 +473,39 @@ export const projectFileEmbeddings = pgTable("project_file_embeddings", {
   ),
 }));
 export type ProjectFileEmbedding = typeof projectFileEmbeddings.$inferSelect;
+
+export const takeoffProjects = pgTable("takeoff_projects", {
+  id: id(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  engineProjectId: text("engine_project_id").notNull(),
+  // Chat conversation that spawned this takeoff (null for the standalone
+  // wizard). Lets chat follow-ups reuse the engine project instead of
+  // re-uploading. set null on conversation delete so the takeoff survives.
+  conversationId: text("conversation_id").references(() => conversations.id, {
+    onDelete: "set null",
+  }),
+  // Provenance: the chat message that triggered the takeoff (optional).
+  sourceMessageId: text("source_message_id"),
+  name: text("name").notNull(),
+  status: text("status").$type<TakeoffStatus>().notNull().default("created"),
+  engineJobId: text("engine_job_id"),
+  jobStatus: text("job_status").$type<EngineJobStatus>(),
+  jobProgress: text("job_progress").notNull().default(""),
+  jobError: text("job_error"),
+  takeoffInstructions: text("takeoff_instructions").notNull().default(""),
+  takeoffScope: jsonb("takeoff_scope").$type<unknown>(),
+  processStartedAt: timestamp("process_started_at"),
+  lastPolledAt: timestamp("last_polled_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  userIdx: index("takeoff_projects_user_id_idx").on(t.userId),
+  conversationIdx: index("takeoff_projects_conversation_id_idx").on(t.conversationId),
+  engineProjectUnique: uniqueIndex("takeoff_projects_engine_project_id_key").on(t.engineProjectId),
+}));
+export type TakeoffProject = typeof takeoffProjects.$inferSelect;
 
 export const conversations = pgTable("conversations", {
   id: id(),

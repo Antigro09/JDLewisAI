@@ -15,6 +15,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
 from app.adapters.base import ExportAdapter
+from app.export.audit import audit_summary
 
 _HEADER_FONT = Font(bold=True, color="FFFFFF")
 _HEADER_FILL = PatternFill("solid", fgColor="1F2937")
@@ -64,8 +65,8 @@ class ExcelExportAdapter(ExportAdapter):
         ws = wb.create_sheet("Takeoff")
         cols = ["Sheet", "Page", "Item Type", "Description", "Quantity", "Unit", "CSI",
                 "Formula", "Scale Conf", "Meas Conf", "Model Conf", "Final Conf",
-                "Needs Review", "Review Reasons", "Status", "Item ID"]
-        _header(ws, cols, [10, 6, 18, 30, 12, 6, 10, 60, 10, 10, 10, 10, 12, 30, 10, 34])
+                "Needs Review", "Review Reasons", "Status", "Audit Notes", "Item ID"]
+        _header(ws, cols, [10, 6, 18, 30, 12, 6, 10, 60, 10, 10, 10, 10, 12, 30, 10, 42, 34])
         for q in quantities:
             sheet = sheets_by_id.get(q["sheet_id"], {})
             row = [
@@ -80,6 +81,7 @@ class ExcelExportAdapter(ExportAdapter):
                 "YES" if q["needs_review"] else "",
                 ", ".join(q.get("review_reason", [])),
                 q.get("review_status", "pending"),
+                audit_summary(q),
                 q["id"],
             ]
             ws.append(row)

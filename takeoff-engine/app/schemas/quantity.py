@@ -20,7 +20,7 @@ class QuantityItem(BaseModel):
     project_id: str
     sheet_id: str
     page_number: int
-    item_type: str                 # concrete_slab | flooring | door | window | ...
+    item_type: str                 # concrete_slab | flooring | wall | column | door | window | ...
     description: str
     quantity: float
     unit: str                      # SF | LF | EA | CY | SY

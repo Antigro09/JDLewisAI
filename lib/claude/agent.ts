@@ -12,17 +12,10 @@ import { attachmentBlocks, buildSystemBlocks } from "./chat";
 import { classifyModelError } from "./errors";
 import { UNTRUSTED_MARKER_BEGIN, UNTRUSTED_MARKER_END } from "./system";
 import type { Attachment, SystemPromptParts } from "./types";
-import {
-  getGoogleTool,
-  googleToolDefinitions,
-  runGoogleTool,
-  type ToolExecutionContext,
-} from "@/lib/tools/google-tools";
-import {
-  getLocalTool,
-  localToolDefinitions,
-  runLocalTool,
-} from "@/lib/tools/local-tools";
+import { type ToolExecutionContext } from "@/lib/tools/google-tools";
+// Side-effect import: populates the tool registry with every tool.
+import "@/lib/tools/register";
+import { toolRegistry, type ToolContext, type ToolResult } from "@/lib/tools/registry";
 import { recordUsage } from "@/lib/usage";
 import { recordAudit } from "@/lib/audit";
 import { appendMessage, buildActivePath } from "@/lib/chat/branches";
@@ -78,6 +71,10 @@ export type AgentEvent =
       summary: string;
       link?: string;
       isError?: boolean;
+      /** Standardized-result extras (registry tools). UI-facing only. */
+      status?: string;
+      confidence?: number;
+      artifacts?: { kind: string; label: string; url?: string }[];
     }
   | {
       type: "tool_request";
@@ -107,6 +104,46 @@ function wrapUntrusted(output: string): string {
     "[external-marker]",
   );
   return `${UNTRUSTED_MARKER_BEGIN}\n${neutralized}\n${UNTRUSTED_MARKER_END}`;
+}
+
+/**
+ * Run one registry tool, streaming its `onProgress` callbacks out as
+ * tool_activity events as they happen, and returning the final ToolResult.
+ * A tiny queue + wake promise interleaves progress with the awaited call so a
+ * multi-step engine tool (upload → index → measure) reports live rather than
+ * dumping everything at the end.
+ */
+async function* runToolStreaming(
+  baseCtx: ToolContext,
+  name: string,
+  input: Record<string, unknown>,
+): AsyncGenerator<AgentEvent, ToolResult> {
+  const queue: string[] = [];
+  let wake: (() => void) | null = null;
+  let settled = false;
+  const ctx: ToolContext = {
+    ...baseCtx,
+    onProgress: (summary) => {
+      queue.push(summary);
+      wake?.();
+      wake = null;
+    },
+  };
+  const exec = toolRegistry.execute(ctx, name, input).then((r) => {
+    settled = true;
+    wake?.();
+    wake = null;
+    return r;
+  });
+  for (;;) {
+    const wait = settled ? null : new Promise<void>((resolve) => { wake = resolve; });
+    while (queue.length) {
+      yield { type: "tool_activity", tool: name, summary: queue.shift()! };
+    }
+    if (settled) break;
+    await Promise.race([exec, wait as Promise<void>]);
+  }
+  return await exec;
 }
 
 /** Loads the conversation's active branch only — not every message ever sent
@@ -296,15 +333,25 @@ export async function* runAgentTurn(
     }
   }
 
+  // Context threaded to every tool (executor + gate). Native tool-use is the
+  // router; the registry's `available()` is just the deterministic gate that
+  // decides which tools are even offered this turn.
+  const toolCtx: ToolContext = {
+    userId: opts.userId,
+    conversationId: opts.conversationId,
+    attachments: opts.liveAttachments,
+    signal: opts.signal,
+    execContext: opts.execContext,
+    googleEnabled: opts.googleEnabled,
+    toolNames: opts.toolNames,
+  };
+
   const tools: unknown[] = [];
-  // Local construction tools (calculators, save_memory) are always available —
-  // pure compute, no external account needed.
-  tools.push(...localToolDefinitions());
-  if (opts.googleEnabled) {
-    let g = googleToolDefinitions();
-    if (opts.toolNames) g = g.filter((d) => opts.toolNames!.includes(d.name));
-    tools.push(...g);
-  }
+  // Registry tools: local calculators (always), Google (if enabled), and any
+  // engine tools whose gate passes (e.g. material_takeoff when a PDF is
+  // attached or a takeoff is already linked to this conversation).
+  const activeTools = await toolRegistry.available(toolCtx);
+  tools.push(...toolRegistry.definitions(activeTools));
   // Cache breakpoint 2 of 3: mark the last CUSTOM tool definition. Server-tool
   // entries (which reject cache_control) are appended after this point, so
   // custom tools stay first and form a cacheable prefix.
@@ -507,7 +554,7 @@ export async function* runAgentTurn(
         id: String(tu.id),
         name: String(tu.name),
         input: (tu.input ?? {}) as Record<string, unknown>,
-        kind: getGoogleTool(String(tu.name))?.kind ?? "read",
+        kind: toolRegistry.get(String(tu.name))?.descriptor.kind ?? "read",
       }));
 
       const hasWrite = classified.some((c) => c.kind === "write");
@@ -539,9 +586,11 @@ export async function* runAgentTurn(
             name: p.name,
             kind: p.kind,
             summary:
-              getGoogleTool(p.name)?.describe(
+              toolRegistry.get(p.name)?.describe?.(
                 (p.input ?? {}) as Record<string, unknown>,
-              ) ?? p.name,
+              ) ??
+              toolRegistry.get(p.name)?.descriptor.title ??
+              p.name,
           })),
         };
         return; // pause until /api/chat/confirm — metering runs in finally
@@ -551,13 +600,21 @@ export async function* runAgentTurn(
       const resultContent: ApiContentBlock[] = [];
       const resultBlocks: MessageBlock[] = [];
       for (const c of classified) {
-        const local = getLocalTool(c.name);
-        const raw = local
-          ? await runLocalTool(opts.userId, c.name, c.input)
-          : await runGoogleTool(opts.userId, c.name, c.input, opts.execContext);
-        // Non-local tool output is attacker-controlled external content — fence
-        // it so the model treats it as data (see UNTRUSTED_CONTENT_NOTE).
-        const r = local ? raw : { ...raw, output: wrapUntrusted(raw.output) };
+        // Run through the registry, streaming its progress() as tool_activity.
+        const gen = runToolStreaming(toolCtx, c.name, c.input);
+        let raw: ToolResult;
+        while (true) {
+          const nx = await gen.next();
+          if (nx.done) {
+            raw = nx.value;
+            break;
+          }
+          yield nx.value;
+        }
+        // Fence attacker-controlled external output (Google/MCP/web). Our own
+        // engines + local calculators declare fenceOutput:false.
+        const fence = toolRegistry.get(c.name)?.descriptor.fenceOutput;
+        const r = fence ? { ...raw, output: wrapUntrusted(raw.output) } : raw;
         await recordAudit({
           userId: opts.userId,
           action: `tool.${c.name}`,
@@ -585,6 +642,9 @@ export async function* runAgentTurn(
           summary: r.summary,
           link: r.link,
           isError: r.isError,
+          status: r.status,
+          confidence: r.confidence,
+          artifacts: r.artifacts?.map((a) => ({ kind: a.kind, label: a.label, url: a.url })),
         };
       }
       apiMessages.push({ role: "user", content: resultContent });
@@ -646,13 +706,14 @@ export async function* applyPendingDecisions(opts: {
       yield { type: "tool_activity", tool: p.name, summary: "Declined by user" };
       continue;
     }
-    const raw = await runGoogleTool(
-      opts.userId,
+    const raw = await toolRegistry.execute(
+      { userId: opts.userId, conversationId: opts.conversationId },
       p.name,
       (p.input ?? {}) as Record<string, unknown>,
     );
-    // Same fencing as runAgentTurn: Google tool output is external content.
-    const r = { ...raw, output: wrapUntrusted(raw.output) };
+    // Same fencing as runAgentTurn: fence external (Google/MCP/web) output.
+    const fence = toolRegistry.get(p.name)?.descriptor.fenceOutput;
+    const r = fence ? { ...raw, output: wrapUntrusted(raw.output) } : raw;
     await recordAudit({
       userId: opts.userId,
       action: `tool.${p.name}`,

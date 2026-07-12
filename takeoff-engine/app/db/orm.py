@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def utcnow() -> datetime:
@@ -21,6 +21,13 @@ def utcnow() -> datetime:
 
 class Base(DeclarativeBase):
     pass
+
+
+# NOTE on the relationship() declarations below: they exist so the unit of
+# work knows the FK dependencies between mappers. Without them, SQLAlchemy
+# may emit child INSERTs (artifacts, quantities...) before the parent sheet/
+# project row — SQLite tolerates that unless FKs are enabled; Postgres does
+# not. None of them are used for attribute access.
 
 
 class ProjectRow(Base):
@@ -41,6 +48,8 @@ class FileRow(Base):
     media_type: Mapped[str] = mapped_column(String(64), default="application/pdf")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+    _project = relationship("ProjectRow")
+
 
 class SheetRow(Base):
     __tablename__ = "sheets"
@@ -51,6 +60,8 @@ class SheetRow(Base):
     sheet_type: Mapped[str] = mapped_column(String(32), default="unknown")
     data: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    _project = relationship("ProjectRow")
 
 
 class ArtifactRow(Base):
@@ -63,6 +74,8 @@ class ArtifactRow(Base):
     kind: Mapped[str] = mapped_column(String(32), index=True)
     data: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    _sheet = relationship("SheetRow")
 
 
 class QuantityRow(Base):
@@ -79,6 +92,9 @@ class QuantityRow(Base):
     data: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+    _project = relationship("ProjectRow")
+    _sheet = relationship("SheetRow")
+
 
 class ReviewDecisionRow(Base):
     __tablename__ = "review_decisions"
@@ -88,6 +104,9 @@ class ReviewDecisionRow(Base):
     action: Mapped[str] = mapped_column(String(16))
     data: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    _quantity = relationship("QuantityRow")
+    _project = relationship("ProjectRow")
 
 
 class ExportJobRow(Base):
@@ -99,6 +118,8 @@ class ExportJobRow(Base):
     file_path: Mapped[str] = mapped_column(String(1024), default="")
     error: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    _project = relationship("ProjectRow")
 
 
 class JobRow(Base):
@@ -113,3 +134,5 @@ class JobRow(Base):
     error: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    _project = relationship("ProjectRow")

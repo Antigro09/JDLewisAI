@@ -45,6 +45,7 @@ const schema = z
     EMBEDDINGS_API_KEY: z.string().min(1).optional(),
     EMBEDDINGS_MODEL: z.string().min(1).optional(),
     EMBEDDINGS_BASE_URL: z.string().url().optional(),
+    TAKEOFF_ENGINE_URL: z.string().url().optional(),
   })
   .superRefine((v, ctx) => {
     if (Boolean(v.GOOGLE_CLIENT_ID) !== Boolean(v.GOOGLE_CLIENT_SECRET)) {
@@ -78,6 +79,7 @@ const raw = {
   EMBEDDINGS_API_KEY: clean(process.env.EMBEDDINGS_API_KEY),
   EMBEDDINGS_MODEL: clean(process.env.EMBEDDINGS_MODEL),
   EMBEDDINGS_BASE_URL: clean(process.env.EMBEDDINGS_BASE_URL),
+  TAKEOFF_ENGINE_URL: clean(process.env.TAKEOFF_ENGINE_URL),
 };
 
 function loadEnv(): Env {

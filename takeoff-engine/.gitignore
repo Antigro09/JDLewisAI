@@ -5,3 +5,6 @@ __pycache__/
 data/
 fixture_plan.pdf
 .env
+/tmp_inspect
+/tmp
+/takeoff.db

@@ -2,9 +2,12 @@ import os
 
 # Test environment: in-memory SQLite, local scratch storage, mock adapters.
 os.environ.setdefault("TAKEOFF_DATABASE_URL", "sqlite:///:memory:")
+os.environ.setdefault("TAKEOFF_JOB_QUEUE", "inline")
 os.environ.setdefault("TAKEOFF_OCR_TRANSPORT", "mock")
 os.environ.setdefault("TAKEOFF_VLM_TRANSPORT", "mock")
 os.environ.setdefault("TAKEOFF_DETECTOR_TRANSPORT", "mock")
+os.environ.setdefault("TAKEOFF_DETECTOR_MODEL", "mock")
+os.environ.setdefault("TAKEOFF_DETECTOR_DEVICE", "auto")
 os.environ.setdefault("TAKEOFF_SEGMENTER_TRANSPORT", "mock")
 os.environ.setdefault("TAKEOFF_ROLLUP_TRANSPORT", "mock")
 

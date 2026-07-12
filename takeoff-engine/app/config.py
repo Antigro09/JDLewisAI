@@ -10,9 +10,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Transport = Literal["mock", "sagemaker", "openai_compat", "local"]
+DetectorModel = Literal["mock", "rfdetr", "grounding_dino"]
+DetectorDevice = Literal["auto", "cpu", "cuda", "npu"]
 
 
 class Settings(BaseSettings):
@@ -20,8 +23,11 @@ class Settings(BaseSettings):
 
     # --- infrastructure -------------------------------------------------
     database_url: str = "postgresql+psycopg://takeoff:takeoff@localhost:5433/takeoff"
+    database_pool_recycle_seconds: int = Field(default=300, ge=30)
+    database_pool_timeout_seconds: int = Field(default=30, ge=1)
+    database_connect_timeout_seconds: int = Field(default=10, ge=1)
     storage_root: Path = Path("data")
-    job_queue: Literal["local", "rq"] = "local"
+    job_queue: Literal["local", "rq", "inline"] = "local"
     redis_url: str = "redis://localhost:6379/0"
 
     # --- rendering -------------------------------------------------------
@@ -34,11 +40,16 @@ class Settings(BaseSettings):
     detector_transport: Transport = "mock"
     segmenter_transport: Transport = "mock"
     rollup_transport: Transport = "mock"
+    detector_model: DetectorModel = "mock"
+    detector_device: DetectorDevice = "auto"
 
     # Local (in-process) weights — used when transport = "local". Point these at
     # the model files you downloaded. OCR (PaddleOCR) fetches its own weights.
     detector_checkpoint: str = ""      # path to your fine-tuned RF-DETR .pth
     detector_threshold: float = 0.4
+    grounding_dino_model: str = "IDEA-Research/grounding-dino-base"
+    grounding_dino_box_threshold: float = 0.25
+    grounding_dino_text_threshold: float = 0.25
     segmenter_checkpoint: str = ""     # path to a SAM 2 .pt checkpoint
     segmenter_model_cfg: str = "sam2_hiera_s.yaml"
 

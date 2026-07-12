@@ -9,14 +9,17 @@ class DetectedObject(BaseModel):
     id: str = Field(default_factory=new_id)
     sheet_id: str
     viewport_id: str | None = None
-    # room | slab | wall | door | window | room_label | finish_tag |
-    # dimension | callout | scale_bar | north_arrow | symbol
+    # drawing_area | title_block | notes | legend | schedule | room |
+    # floor_area | slab | wall | square_column | round_column | column |
+    # door | window | room_label | finish_tag | dimension | callout |
+    # scale_bar | north_arrow | symbol
     label: str
     bbox: BBox
     confidence: float
     detector: str  # rf-detr | grounding-dino | vector_heuristic | mock
     matched_ocr_span_ids: list[str] = Field(default_factory=list)
     schedule_ref: str = ""  # e.g. door mark "101A" matched to schedule row
+    material_ref: str = ""  # e.g. WOOD / VCT / BROADLOOM CARPET on finish plans
 
 
 class SegmentationMask(BaseModel):
@@ -52,3 +55,16 @@ class PolygonGeometry(BaseModel):
     # Where the boundary came from — governs how much to trust the measured area.
     # "vector" = exact CAD linework; "mask" = approximate neural segmentation.
     boundary_source: str = "unknown"  # vector | mask | manual | unknown
+
+
+class ExclusionRegion(BaseModel):
+    """Area that must not contribute to quantities."""
+
+    id: str = Field(default_factory=new_id)
+    sheet_id: str
+    reason: str                    # etr_text | gray_fill | hatch_fill | shaded_existing_wall
+    bbox: BBox
+    exterior: list[tuple[float, float]] = Field(default_factory=list)
+    holes: list[list[tuple[float, float]]] = Field(default_factory=list)
+    source_ids: list[str] = Field(default_factory=list)
+    confidence: float = 0.0

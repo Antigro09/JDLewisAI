@@ -24,6 +24,13 @@ export const PLUGINS: PluginDef[] = [
       "Let the AI search the web for current information. May add a small per-search cost.",
     default: false,
   },
+  {
+    id: "material_takeoff",
+    label: "Material Takeoff",
+    description:
+      "Let the AI run a material takeoff from drawings you attach in chat (detects and measures walls, doors, flooring, and columns via the takeoff engine).",
+    default: true,
+  },
 ];
 
 export function getPlugin(id: string): PluginDef | undefined {

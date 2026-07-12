@@ -159,6 +159,33 @@ def build_adapters(settings: Settings) -> dict[str, Any]:
             return local_factory()
         return remote_factory()
 
+    def detector_adapter():
+        if settings.detector_transport == "mock":
+            return detector_mock.MockDetectorAdapter()
+        if settings.detector_model == "grounding_dino":
+            endpoint = (
+                settings.detector_gdino_sagemaker_endpoint
+                if settings.detector_transport == "sagemaker"
+                else ""
+            )
+            return detector_gdino.GroundingDINOAdapter(
+                sagemaker_endpoint=endpoint,
+                region=settings.aws_region,
+                model_id=settings.grounding_dino_model,
+                device=settings.detector_device,
+                box_threshold=settings.grounding_dino_box_threshold,
+                text_threshold=settings.grounding_dino_text_threshold,
+            )
+        if settings.detector_transport == "local":
+            return detector_rfdetr.RFDETRAdapter(
+                checkpoint=settings.detector_checkpoint,
+                threshold=settings.detector_threshold,
+            )
+        return detector_rfdetr.RFDETRAdapter(
+            sagemaker_endpoint=settings.detector_sagemaker_endpoint,
+            region=settings.aws_region,
+        )
+
     return {
         # local factories load your DOWNLOADED weights from the *_checkpoint paths.
         "ocr": pick(
@@ -169,18 +196,7 @@ def build_adapters(settings: Settings) -> dict[str, Any]:
                 sagemaker_endpoint=settings.ocr_sagemaker_endpoint, region=settings.aws_region
             ),
         ),
-        "detector": pick(
-            settings.detector_transport,
-            detector_mock.MockDetectorAdapter,
-            lambda: detector_rfdetr.RFDETRAdapter(
-                checkpoint=settings.detector_checkpoint,
-                threshold=settings.detector_threshold,
-            ),
-            lambda: detector_rfdetr.RFDETRAdapter(
-                sagemaker_endpoint=settings.detector_sagemaker_endpoint,
-                region=settings.aws_region,
-            ),
-        ),
+        "detector": detector_adapter(),
         "segmenter": pick(
             settings.segmenter_transport,
             segmenter_mock.MockSegmenterAdapter,

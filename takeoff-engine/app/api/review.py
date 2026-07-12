@@ -6,8 +6,11 @@ the review_decisions table doubles as labeled training data
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.database import get_session
@@ -28,18 +31,50 @@ class ReviewRequest(BaseModel):
     comment: str = ""
 
 
+def _review_decisions_for_project(project_id: str, db: Session) -> list[dict]:
+    """Load corrections without hydrating `created_at`.
+
+    Older local SQLite databases can contain an empty string in the DateTime
+    column, which makes SQLAlchemy raise before the endpoint can return. The
+    corrections log is still useful, so load only the safe columns and treat the
+    timestamp as optional for those legacy rows.
+    """
+    rows = db.execute(
+        select(
+            ReviewDecisionRow.id,
+            ReviewDecisionRow.quantity_item_id,
+            ReviewDecisionRow.action,
+            ReviewDecisionRow.data,
+        ).where(ReviewDecisionRow.project_id == project_id)
+    ).all()
+    corrections = []
+    for row in rows:
+        data = row.data or {}
+        corrections.append(
+            {
+                "id": row.id,
+                "quantity_item_id": row.quantity_item_id,
+                "action": row.action,
+            } | data | {"created_at": data.get("created_at") or None}
+        )
+    return corrections
+
+
 @router.post("/quantities/{quantity_id}/review")
 def review_quantity(quantity_id: str, body: ReviewRequest, db: Session = Depends(get_session)):
     row = db.get(QuantityRow, quantity_id)
     if not row:
         raise HTTPException(404, "quantity not found")
 
+    created_at = datetime.now(UTC)
     decision = ReviewDecisionRow(
         id=new_id(),
         quantity_item_id=quantity_id,
         project_id=row.project_id,
         action=body.action.value,
+        created_at=created_at,
         data={
+            "created_at": created_at.isoformat(),
             "reviewer": body.reviewer,
             "comment": body.comment,
             "corrected_quantity": body.corrected_quantity,
@@ -80,9 +115,4 @@ def review_quantity(quantity_id: str, body: ReviewRequest, db: Session = Depends
 @router.get("/projects/{project_id}/corrections")
 def list_corrections(project_id: str, db: Session = Depends(get_session)):
     """The corrections log — export this as fine-tuning/eval data."""
-    rows = db.query(ReviewDecisionRow).filter_by(project_id=project_id).all()
-    return [
-        {"id": r.id, "quantity_item_id": r.quantity_item_id, "action": r.action,
-         "created_at": r.created_at} | r.data
-        for r in rows
-    ]
+    return _review_decisions_for_project(project_id, db)

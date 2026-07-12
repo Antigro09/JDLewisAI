@@ -40,6 +40,8 @@ class SheetType(str, Enum):
     ARCHITECTURAL_PLAN = "architectural_plan"
     STRUCTURAL_PLAN = "structural_plan"
     FINISH_PLAN = "finish_plan"
+    DEMOLITION_PLAN = "demolition_plan"   # demo-only sheets: never a takeoff target
+    LIFE_SAFETY = "life_safety"           # duplicates plan geometry: never a takeoff target
     DETAIL = "detail"
     SCHEDULE = "schedule"
     MEP = "mep"
@@ -91,7 +93,9 @@ class VectorPath(BaseModel):
     points: list[list[tuple[float, float]]] = Field(default_factory=list)  # subpaths
     is_closed: bool = False
     stroke_width: float = 0.0
-    color: str = ""           # hex, when known
+    color: str = ""           # stroke color hex (fill color for fill-only paths)
+    fill_color: str = ""      # fill color hex, when the path has a fill
+    dashes: list[float] = Field(default_factory=list)
     layer: str = ""           # OCG/layer name when the PDF exposes it
     bbox: BBox = (0.0, 0.0, 0.0, 0.0)
 

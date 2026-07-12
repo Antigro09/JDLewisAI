@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.api.review import _review_decisions_for_project
 from app.config import get_settings
 from app.db.database import get_session
 from app.db.orm import (
@@ -12,7 +13,6 @@ from app.db.orm import (
     ExportJobRow,
     ProjectRow,
     QuantityRow,
-    ReviewDecisionRow,
     SheetRow,
 )
 from app.export.csv_export import CSVExportAdapter
@@ -61,10 +61,7 @@ def create_export(project_id: str, body: ExportRequest, db: Session = Depends(ge
     if sheet_ids:
         for a in db.query(ArtifactRow).filter(ArtifactRow.sheet_id.in_(sheet_ids)).all():
             artifacts[a.id] = {"kind": a.kind, "data": a.data}
-    decisions = [
-        {"id": r.id, "quantity_item_id": r.quantity_item_id, "action": r.action} | r.data
-        for r in db.query(ReviewDecisionRow).filter_by(project_id=project_id).all()
-    ]
+    decisions = _review_decisions_for_project(project_id, db)
 
     storage = LocalStorage(get_settings().storage_root)
     export_id = new_id()

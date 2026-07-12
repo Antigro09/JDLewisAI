@@ -1,6 +1,3 @@
-import { generateStructured, type GenerateResult } from "@/lib/claude/chat";
-import { MECHANICAL_MODEL } from "@/lib/claude/models";
-
 /**
  * Material takeoff engine — drawings in, CSI-organized material quantities out.
  *
@@ -380,6 +377,7 @@ export type Measurement = {
   basis: string;
   source: RawMeasurement["source"];
   assumptions: string[];
+  assemblyParams?: Record<string, number>;
 };
 
 export type TakeoffIssue = {
@@ -614,6 +612,18 @@ const line = (
   assumptions: string[] = [],
 ): LineSpec => ({ description, unit, quantityExact, wastePct, csiDivision, assumptions });
 
+function formatInches(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  const whole = Math.floor(value);
+  let eighths = Math.round((value - whole) * 8);
+  if (eighths === 8) return `${whole + 1}"`;
+  if (eighths === 0) return `${whole}"`;
+  const divisor = eighths % 4 === 0 ? 4 : eighths % 2 === 0 ? 2 : 1;
+  eighths /= divisor;
+  const denominator = 8 / divisor;
+  return whole > 0 ? `${whole} ${eighths}/${denominator}"` : `${eighths}/${denominator}"`;
+}
+
 /**
  * The assembly registry. Factors are industry rules of thumb, declared once,
  * overridable via `params` — and every line records its assumptions so the
@@ -655,7 +665,7 @@ export const ASSEMBLIES: readonly AssemblyDefinition[] = [
     trade: "framing",
     appliesTo: "length",
     csiDivision: "09",
-    defaults: { studSpacingIn: 16, extrasPct: 15, wallHeightFt: 9, trackStickFt: 10 },
+    defaults: { studSpacingIn: 16, extrasPct: 15, wallHeightFt: 9, trackStickFt: 10, studSizeIn: 3.625 },
     compute: (lf, p) => {
       // Studs: one per spacing along the run, +1 to close the run, plus an
       // extras allowance for corners, intersections, and opening jambs.
@@ -744,19 +754,16 @@ export const ASSEMBLIES: readonly AssemblyDefinition[] = [
     csiDivision: "03",
     defaults: { wastePct: 8, meshSheetSf: 50, meshLapPct: 15, vbRollSf: 1000, vbLapPct: 10 },
     compute: (cy, p) => {
-      // Slab area back-computed is not available from CY alone; mesh/vapor
-      // barrier factors are per-CY-derived only when thickness is known, so we
-      // express them per CY at a 4" slab equivalence (81 SF of slab per CY).
-      const slabSfEquivalent = cy * 81;
+      const slabSf = p.slabSf ?? cy * 81;
       return [
         line("Ready-mix concrete 3000 PSI", "CY", cy * (1 + p.wastePct / 100), p.wastePct, "03", [
           "Round final order to supplier increment (typically 0.25–0.5 CY)",
         ]),
-        line(`6×6 W1.4 WWM sheet (${p.meshSheetSf} SF)`, "SHEET", (slabSfEquivalent * (1 + p.meshLapPct / 100)) / p.meshSheetSf, p.meshLapPct, "03", [
-          '4" slab equivalence (81 SF/CY) — recompute if thickness differs',
+        line(`6×6 W1.4 WWM sheet (${p.meshSheetSf} SF)`, "SHEET", (slabSf * (1 + p.meshLapPct / 100)) / p.meshSheetSf, p.meshLapPct, "03", [
+          p.slabSf ? "Slab area supplied by takeoff engine" : '4" slab equivalence (81 SF/CY) — recompute if thickness differs',
         ]),
-        line("10-mil vapor barrier (1,000 SF roll)", "ROLL", (slabSfEquivalent * (1 + p.vbLapPct / 100)) / p.vbRollSf, p.vbLapPct, "03", [
-          '4" slab equivalence (81 SF/CY)',
+        line("10-mil vapor barrier (1,000 SF roll)", "ROLL", (slabSf * (1 + p.vbLapPct / 100)) / p.vbRollSf, p.vbLapPct, "03", [
+          p.slabSf ? "Slab area supplied by takeoff engine" : '4" slab equivalence (81 SF/CY)',
         ]),
       ];
     },
@@ -813,10 +820,32 @@ export const ASSEMBLIES: readonly AssemblyDefinition[] = [
   },
 ] as const;
 
-const ASSEMBLY_BY_ID = new Map(ASSEMBLIES.map((a) => [a.id, a]));
+const ASSEMBLY_BY_ID: Map<string, AssemblyDefinition> = new Map(ASSEMBLIES.map((a) => [a.id, a]));
+const metalStudWallAssembly = ASSEMBLY_BY_ID.get("metal-stud-wall");
+if (metalStudWallAssembly) {
+  ASSEMBLY_BY_ID.set("metal-stud-wall", {
+    ...metalStudWallAssembly,
+    compute: (lf, p) => {
+      const studs = (Math.ceil((lf * 12) / p.studSpacingIn) + 1) * (1 + p.extrasPct / 100);
+      const trackSticks = (lf * 2) / p.trackStickFt;
+      const studSize = formatInches(p.studSizeIn) || '3 5/8"';
+      return [
+        line(`${studSize} 25ga metal studs x ${p.wallHeightFt}' (${p.studSpacingIn}" o.c.)`, "EA", studs, p.extrasPct, "09", [
+          `+${p.extrasPct}% for corners/intersections/openings`,
+        ]),
+        line(`${studSize} 25ga track (${p.trackStickFt}' stick)`, "STICK", trackSticks, 0, "09", [
+          "Top + bottom track = 2 x wall length",
+        ]),
+        line("Framing screws / fasteners (box of 1,000)", "BOX", (lf * 12) / p.studSpacingIn / 250, 0, "09", [
+          "approx. 4 fasteners per stud",
+        ]),
+      ];
+    },
+  });
+}
 
 /** Fallback when the model didn't name an assembly: default by trade+kind. */
-const DEFAULT_ASSEMBLY: Partial<Record<`${Trade}:${MeasurementKind}`, string>> = {
+export const DEFAULT_ASSEMBLY: Partial<Record<`${Trade}:${MeasurementKind}`, string>> = {
   "drywall:area": "drywall-wall",
   "framing:length": "metal-stud-wall",
   "paint:area": "paint-wall",
@@ -870,7 +899,7 @@ export function runAssembly(
     ];
   }
 
-  const params = { ...asm.defaults, ...(overrides[asm.id] ?? {}) };
+  const params = { ...asm.defaults, ...(overrides[asm.id] ?? {}), ...(m.assemblyParams ?? {}) };
   return asm.compute(m.quantity, params).map((spec) => ({
     ...spec,
     quantityPurchase: Math.ceil(spec.quantityExact), // re-ceil'd after merge
@@ -879,214 +908,6 @@ export function runAssembly(
     basis: `${m.label}: ${m.basis}`,
     assumptions: [...m.assumptions, ...spec.assumptions],
   }));
-}
-
-/* ------------------------------------------------------------------ */
-/* Step 1 — gather documents + vision extraction (classification only) */
-/* ------------------------------------------------------------------ */
-
-export type TakeoffFile = {
-  fileBase64: string;
-  mime: string;
-  fileName: string;
-};
-
-// Claude API requests are capped at 32MB and each document is sent base64
-// encoded (×4/3), so raw bytes must stay under ~24MB; leave prompt headroom.
-const MAX_FILE_BYTES = 23 * 1024 * 1024;
-const ALLOWED_MIMES = new Set([
-  "application/pdf",
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-]);
-
-const EXTRACTION_SYSTEM = `You are a construction plan reader performing takeoff CLASSIFICATION for
-a general contractor. You identify WHAT is on each sheet — you never calculate.
-
-HARD RULES:
-- Transcribe dimension strings VERBATIM as printed (e.g. "24'-6\\"", "10'-0\\""). Do NOT convert
-  units, do NOT multiply length × width, do NOT total anything. Local software does all math.
-- Report the title block's scale string VERBATIM in "scaleText" (e.g. "1/4\\" = 1'-0\\"", "NTS").
-  If no scale is printed, use null. NEVER estimate or invent a scale.
-- Work page by page. Emit one sheet object per page that contains takeoff-relevant content, with
-  its 1-based "pageNumber". Do not skip pages silently — if a page has nothing to take off (cover,
-  notes), omit it, but never merge two pages' items into one.
-- Every measurement needs "kind": "count" (fixtures, doors), "length" (walls, pipe runs, trim),
-  "area" (wall/floor/ceiling finishes), or "volume" (concrete, excavation — include a depth/
-  thickness dimension string).
-- "trade" must be one of: concrete, masonry, framing, drywall, insulation, paint, flooring,
-  doors_windows, plumbing, hvac, electrical, fire_protection, earthwork, general.
-- When you recognize the work, set "assembly" to one of the known ids you are given; otherwise
-  omit it.
-- "source": "dimension_string" when you transcribed printed dimensions; "schedule" when the value
-  comes from a schedule table (use dims.value + dims.valueUnit for pre-computed values like
-  "1,240 SF"); "estimated" ONLY when you must flag something with no printed dimension (these are
-  marked for human verification, so use sparingly and explain in "notes").
-
-Output STRICT JSON only:
-{ "sheets": [ { "pageNumber": number, "sheetId": string|null, "sheetTitle": string|null,
-  "scaleText": string|null, "measurements": [ { "kind": "count"|"length"|"area"|"volume",
-  "trade": string, "assembly": string|null, "label": string, "count": number|null,
-  "dims": { "length": string|null, "width": string|null, "height": string|null,
-  "depth": string|null, "value": string|null, "valueUnit": "LF"|"SF"|"SY"|"CY"|"CF"|null }|null,
-  "source": "dimension_string"|"schedule"|"traced"|"estimated", "confidence": number|null,
-  "notes": string|null } ] } ] }`;
-
-/** Structured outputs require every property listed in `required`, so
- *  "absent" is expressed as an explicit null (matching the prompt's shape). */
-const nullable = (schema: Record<string, unknown>) => ({
-  anyOf: [schema, { type: "null" }],
-});
-
-/** Enforced via structured outputs — mirrors the shape in EXTRACTION_SYSTEM
- *  (and RawSheet/RawMeasurement) exactly. */
-const EXTRACTION_SCHEMA = {
-  type: "object",
-  properties: {
-    sheets: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          pageNumber: { type: "number" },
-          sheetId: nullable({ type: "string" }),
-          sheetTitle: nullable({ type: "string" }),
-          scaleText: nullable({ type: "string" }),
-          measurements: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                kind: { type: "string", enum: ["count", "length", "area", "volume"] },
-                trade: { type: "string", enum: [...TRADES] },
-                assembly: nullable({ type: "string" }),
-                label: { type: "string" },
-                count: nullable({ type: "number" }),
-                dims: nullable({
-                  type: "object",
-                  properties: {
-                    length: nullable({ type: "string" }),
-                    width: nullable({ type: "string" }),
-                    height: nullable({ type: "string" }),
-                    depth: nullable({ type: "string" }),
-                    value: nullable({ type: "string" }),
-                    valueUnit: nullable({
-                      type: "string",
-                      enum: ["LF", "SF", "SY", "CY", "CF"],
-                    }),
-                  },
-                  required: ["length", "width", "height", "depth", "value", "valueUnit"],
-                  additionalProperties: false,
-                }),
-                source: {
-                  type: "string",
-                  enum: ["dimension_string", "schedule", "traced", "estimated"],
-                },
-                confidence: nullable({ type: "number" }),
-                notes: nullable({ type: "string" }),
-              },
-              required: [
-                "kind",
-                "trade",
-                "assembly",
-                "label",
-                "count",
-                "dims",
-                "source",
-                "confidence",
-                "notes",
-              ],
-              additionalProperties: false,
-            },
-          },
-        },
-        required: ["pageNumber", "sheetId", "sheetTitle", "scaleText", "measurements"],
-        additionalProperties: false,
-      },
-    },
-  },
-  required: ["sheets"],
-  additionalProperties: false,
-};
-
-export type SheetExtraction = {
-  fileName: string;
-  sheets: RawSheet[];
-  usage: GenerateResult;
-};
-
-/**
- * Steps 1+2 vision pass: multi-page-safe ingestion of one document, returning
- * classification + verbatim transcription per sheet. Scope (step 2) is pushed
- * into the prompt so out-of-scope trades aren't extracted at all (cheaper),
- * and re-enforced deterministically downstream (guaranteed).
- */
-export async function extractSheetMeasurements(opts: {
-  file: TakeoffFile;
-  scope?: TradeScope;
-  model?: string;
-}): Promise<SheetExtraction> {
-  const { file } = opts;
-  if (!ALLOWED_MIMES.has(file.mime)) {
-    throw new Error(`Unsupported file type ${file.mime} for ${file.fileName} (PDF/PNG/JPEG/WebP).`);
-  }
-  const approxBytes = Math.floor(file.fileBase64.length * 0.75);
-  if (approxBytes > MAX_FILE_BYTES) {
-    throw new Error(
-      `${file.fileName} is ~${Math.round(approxBytes / 1024 / 1024)}MB — over the ${Math.round(
-        MAX_FILE_BYTES / 1024 / 1024,
-      )}MB per-document limit. Split the PDF and re-run.`,
-    );
-  }
-
-  const scopeNote = opts.scope?.trades?.length
-    ? `SCOPE: extract ONLY these trades: ${opts.scope.trades.join(", ")}. Skip everything else.`
-    : "SCOPE: full takeoff — all trades.";
-  const assemblyIds = ASSEMBLIES.map((a) => `${a.id} (${a.appliesTo}: ${a.label})`).join("; ");
-
-  // Structured outputs constrain decoding to EXTRACTION_SCHEMA, so one call
-  // replaces the old parse-and-retry (generateStructured has its own fallback
-  // ladder — a malformed reply still doesn't lose the whole document).
-  const { data: parsed, ...meta } = await generateStructured<{
-    sheets?: RawSheet[];
-  }>({
-    // Verbatim transcription is mechanical — default to the cheap model.
-    model: opts.model ?? MECHANICAL_MODEL,
-    effort: "high",
-    system: EXTRACTION_SYSTEM,
-    maxTokens: 8000,
-    schema: EXTRACTION_SCHEMA,
-    schemaName: "sheet_extraction",
-    turns: [
-      {
-        role: "user",
-        text: `${scopeNote}\nKnown assembly ids: ${assemblyIds}\nRead every page of this document and return JSON only.`,
-        attachments: [
-          { mime: file.mime, name: file.fileName, dataBase64: file.fileBase64 },
-        ],
-      },
-    ],
-  });
-  // Structured path returns parsed data, not raw text — keep the GenerateResult
-  // shape callers meter against.
-  const usage: GenerateResult = { text: "", ...meta };
-
-  if (!parsed?.sheets || !Array.isArray(parsed.sheets)) {
-    throw new Error(`Could not extract structured measurements from ${file.fileName}.`);
-  }
-
-  const sheets: RawSheet[] = parsed.sheets
-    .filter((s) => s && Number.isFinite(Number(s.pageNumber)))
-    .map((s) => ({
-      pageNumber: Math.round(Number(s.pageNumber)),
-      sheetId: s.sheetId ?? undefined,
-      sheetTitle: s.sheetTitle ?? undefined,
-      scaleText: s.scaleText ?? null,
-      measurements: Array.isArray(s.measurements) ? s.measurements : [],
-    }));
-
-  return { fileName: file.fileName, sheets, usage };
 }
 
 /* ------------------------------------------------------------------ */
@@ -1125,7 +946,7 @@ export type TakeoffReport = {
   usage: { fileName: string; model: string; inputTokens: number; outputTokens: number }[];
 };
 
-function mergeLines(lines: MaterialLine[]): MaterialLine[] {
+export function mergeLines(lines: MaterialLine[]): MaterialLine[] {
   const merged = new Map<string, MaterialLine>();
   for (const l of lines) {
     const key = `${l.csiDivision}::${l.trade}::${l.description.toLowerCase()}::${l.unit}`;
@@ -1149,7 +970,7 @@ function mergeLines(lines: MaterialLine[]): MaterialLine[] {
   }));
 }
 
-function organizeReport(lines: MaterialLine[]): DivisionSection[] {
+export function organizeReport(lines: MaterialLine[]): DivisionSection[] {
   const byDivision = new Map<CsiDivision, Map<Trade, MaterialLine[]>>();
   for (const l of lines) {
     if (!byDivision.has(l.csiDivision)) byDivision.set(l.csiDivision, new Map());
@@ -1171,121 +992,28 @@ function organizeReport(lines: MaterialLine[]): DivisionSection[] {
     }));
 }
 
-/**
- * The full pipeline (steps 1–6). Per-file failures are isolated into `issues`
- * — one corrupt PDF degrades the report, it doesn't destroy it.
- */
-export async function runMaterialTakeoff(opts: {
-  files: TakeoffFile[];
-  scope?: TradeScope;
-  /** Per-assembly factor overrides, e.g. { "drywall-wall": { wastePct: 12 } } */
-  assemblyOverrides?: Record<string, Record<string, number>>;
-  /** Raster DPI used when mapping traced pixel geometry (default 150). */
-  dpi?: number;
-  model?: string;
-}): Promise<TakeoffReport> {
-  if (!opts.files.length) throw new Error("Provide at least one plan document.");
-
-  const issues: TakeoffIssue[] = [];
-  const sheetSummaries: SheetSummary[] = [];
-  const measurements: Measurement[] = [];
-  const usage: TakeoffReport["usage"] = [];
-
-  for (const file of opts.files) {
-    let extraction: SheetExtraction;
-    try {
-      extraction = await extractSheetMeasurements({
-        file,
-        scope: opts.scope,
-        model: opts.model,
-      });
-    } catch (err) {
-      issues.push({
-        severity: "error",
-        where: file.fileName,
-        message: err instanceof Error ? err.message : "Extraction failed.",
-      });
-      continue;
-    }
-    usage.push({
-      fileName: file.fileName,
-      model: extraction.usage.model,
-      inputTokens: extraction.usage.inputTokens,
-      outputTokens: extraction.usage.outputTokens,
-    });
-
-    for (const sheet of extraction.sheets) {
-      const sheetRef = `${file.fileName} p.${sheet.pageNumber}${sheet.sheetId ? ` (${sheet.sheetId})` : ""}`;
-
-      // Step 3 — establish the measurement method for this sheet.
-      let calibration: ScaleCalibration | null = null;
-      let scaleLabel: string;
-      if (sheet.scaleText) {
-        const parsed = ScaleCalibration.fromScaleString(sheet.scaleText, { dpi: opts.dpi });
-        if (parsed.kind === "calibrated") {
-          calibration = parsed.calibration;
-          scaleLabel = calibration.describe();
-        } else if (parsed.kind === "nts") {
-          scaleLabel = "NTS — dimension strings only";
-          issues.push({
-            severity: "warning",
-            where: sheetRef,
-            message: "Sheet is NTS: traced geometry disabled; printed dimensions only.",
-          });
-        } else {
-          scaleLabel = `Unparsed scale "${parsed.raw}" — dimension strings only`;
-          issues.push({
-            severity: "warning",
-            where: sheetRef,
-            message: `Could not parse scale string "${parsed.raw}" — traced geometry disabled.`,
-          });
-        }
-      } else {
-        scaleLabel = "No scale printed — dimension strings only";
-      }
-
-      // Steps 2+4 — hard scope filter, then deterministic normalization.
-      let kept = 0;
-      for (const raw of sheet.measurements) {
-        if (!raw || !TRADES.includes(raw.trade)) {
-          issues.push({
-            severity: "warning",
-            where: sheetRef,
-            message: `Dropped item with unknown trade "${raw?.trade}".`,
-          });
-          continue;
-        }
-        if (!inScope(raw.trade, opts.scope)) continue;
-        const m = normalizeMeasurement(raw, { sheetRef, calibration, issues });
-        if (m) {
-          measurements.push(m);
-          kept += 1;
-        }
-      }
-
-      sheetSummaries.push({
-        fileName: file.fileName,
-        pageNumber: sheet.pageNumber,
-        sheetId: sheet.sheetId,
-        sheetTitle: sheet.sheetTitle,
-        scale: scaleLabel,
-        measurementCount: kept,
-      });
-    }
-  }
-
-  // Step 5 — assemblies; Step 6 — merge + organize.
-  const lines = measurements.flatMap((m) => runAssembly(m, opts.assemblyOverrides ?? {}, issues));
+export function buildReportFromMeasurements(
+  measurements: Measurement[],
+  opts: {
+    sheets: SheetSummary[];
+    scope?: TradeScope;
+    assemblyOverrides?: Record<string, Record<string, number>>;
+    issues?: TakeoffIssue[];
+  },
+): TakeoffReport {
+  const issues = [...(opts.issues ?? [])];
+  const scoped = measurements.filter((m) => inScope(m.trade, opts.scope));
+  const lines = scoped.flatMap((m) => runAssembly(m, opts.assemblyOverrides ?? {}, issues));
   const divisions = organizeReport(mergeLines(lines));
 
   return {
     generatedAt: new Date().toISOString(),
     scope: opts.scope ?? {},
-    sheets: sheetSummaries,
-    measurements,
+    sheets: opts.sheets,
+    measurements: scoped,
     divisions,
     issues,
-    usage,
+    usage: [],
   };
 }
 

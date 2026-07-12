@@ -3,13 +3,15 @@ from __future__ import annotations
 from functools import partial
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db.database import get_session
 from app.db.orm import JobRow, ProjectRow
-from app.pipeline.orchestrator import process_project_job
+from app.pipeline.orchestrator import index_project_job, process_project_job
 from app.schemas.core import new_id
+from app.schemas.takeoff_scope import TakeoffScope
 from app.workers.base import build_queue
 
 router = APIRouter(prefix="/api", tags=["pipeline"])
@@ -25,16 +27,38 @@ def get_queue():
     return _queue
 
 
+class ProcessRequest(BaseModel):
+    scope: TakeoffScope | None = None
+
+
+@router.post("/projects/{project_id}/index", status_code=202)
+def index_project(project_id: str, db: Session = Depends(get_session)):
+    project = db.get(ProjectRow, project_id)
+    if not project:
+        raise HTTPException(404, "project not found")
+    job_id = new_id()
+    db.add(JobRow(id=job_id, project_id=project_id, kind="index", status="queued"))
+    project.status = "indexing"
+    db.commit()
+    get_queue().enqueue(job_id, partial(index_project_job, project_id, job_id))
+    return {"job_id": job_id, "status": "queued"}
+
+
 @router.post("/projects/{project_id}/process", status_code=202)
-def process_project(project_id: str, db: Session = Depends(get_session)):
+def process_project(project_id: str, body: ProcessRequest | None = None, db: Session = Depends(get_session)):
     project = db.get(ProjectRow, project_id)
     if not project:
         raise HTTPException(404, "project not found")
     job_id = new_id()
     db.add(JobRow(id=job_id, project_id=project_id, kind="process", status="queued"))
+    if body and body.scope:
+        data = dict(project.data or {})
+        data["takeoff_scope"] = body.scope.model_dump(mode="json")
+        project.data = data
     project.status = "processing"
     db.commit()
-    get_queue().enqueue(job_id, partial(process_project_job, project_id, job_id))
+    scope_payload = body.scope.model_dump(mode="json") if body and body.scope else None
+    get_queue().enqueue(job_id, partial(process_project_job, project_id, job_id, scope_payload))
     return {"job_id": job_id, "status": "queued"}
 
 

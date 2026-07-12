@@ -15,6 +15,27 @@
       "when": 1783344053344,
       "tag": "0001_batch2",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783481810445,
+      "tag": "0002_blue_screwball",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783569600000,
+      "tag": "0003_scoped_takeoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783798469006,
+      "tag": "0004_slimy_gabe_jones",
+      "breakpoints": true
     }
   ]
 }

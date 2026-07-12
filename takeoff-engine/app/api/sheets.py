@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import math
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+from shapely.geometry import Polygon
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -10,6 +13,36 @@ from app.db.orm import ArtifactRow, QuantityRow, SheetRow
 from app.storage.local import LocalStorage
 
 router = APIRouter(prefix="/api", tags=["sheets"])
+
+
+def _wall_segment_guides(geom_data: dict, ft_per_pt: float | None) -> dict | None:
+    """Centerline endpoints + length label for one wall geometry, so the UI
+    can draw point-to-point measurement guidelines."""
+    exterior = geom_data.get("exterior") or []
+    if len(exterior) < 4:
+        return None
+    poly = Polygon(exterior)
+    if not poly.is_valid or poly.is_empty:
+        return None
+    rect = poly.minimum_rotated_rectangle
+    if not isinstance(rect, Polygon):
+        return None
+    coords = list(rect.exterior.coords)
+    edges = [(coords[i], coords[i + 1], math.dist(coords[i], coords[i + 1])) for i in range(4)]
+    (a, b, _long) = max(edges, key=lambda e: e[2])
+    # midpoints of the two short edges = centerline endpoints
+    (c, d, _short) = min(edges, key=lambda e: e[2])
+    short_vec = ((d[0] - c[0]) / 2, (d[1] - c[1]) / 2)
+    p1 = (a[0] + short_vec[0], a[1] + short_vec[1])
+    p2 = (b[0] + short_vec[0], b[1] + short_vec[1])
+    length_pt = geom_data.get("length_pt") or math.dist(p1, p2)
+    if not ft_per_pt or ft_per_pt <= 0:
+        return None
+    return {
+        "p1": [round(p1[0], 2), round(p1[1], 2)],
+        "p2": [round(p2[0], 2), round(p2[1], 2)],
+        "label": f"{length_pt * ft_per_pt:.2f} LF",
+    }
 
 
 @router.get("/projects/{project_id}/sheets")
@@ -51,13 +84,23 @@ def sheet_overlay(sheet_id: str, db: Session = Depends(get_session)):
     }
     scale = db.query(ArtifactRow).filter_by(sheet_id=sheet_id, kind="scale").first()
 
+    scale_data = scale.data if scale else None
+    ft_per_pt = None
+    if scale_data and scale_data.get("usable") and scale_data.get("ft_per_pt"):
+        ft_per_pt = float(scale_data["ft_per_pt"])
+
     features = []
     for q in db.query(QuantityRow).filter_by(sheet_id=sheet_id).all():
         data = q.data
-        polygons, boxes = [], []
+        polygons, holes, boxes, segments = [], [], [], []
         for gid in data.get("source_geometry_ids", []):
             if gid in geoms:
                 polygons.append(geoms[gid]["exterior"])
+                holes.append(geoms[gid].get("holes", []))
+                if q.item_type == "wall":
+                    guide = _wall_segment_guides(geoms[gid], ft_per_pt)
+                    if guide is not None:
+                        segments.append(guide)
             elif gid in dets:
                 boxes.append(dets[gid]["bbox"])
         features.append({
@@ -73,12 +116,14 @@ def sheet_overlay(sheet_id: str, db: Session = Depends(get_session)):
             "final_confidence": data.get("final_confidence", 0),
             "style": data.get("overlay_style", {}),
             "polygons": polygons,
+            "holes": holes,
             "boxes": boxes,
+            "segments": segments,
         })
     return {
         "sheet_id": sheet_id,
         "width_pt": sheet.data.get("width_pt"),
         "height_pt": sheet.data.get("height_pt"),
-        "scale": scale.data if scale else None,
+        "scale": scale_data,
         "features": features,
     }
