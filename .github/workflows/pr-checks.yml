@@ -1,0 +1,133 @@
+name: PR Checks
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Squash merges use the PR title as the commit subject, so titles must
+  # follow Conventional Commits (https://www.conventionalcommits.org).
+  pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          conventional='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9,./-]+\))?!?: .+'
+          revert='^Revert ".+"$'
+
+          if [[ "$PR_TITLE" =~ $revert ]]; then
+            echo "PR title accepted (GitHub auto-revert)."
+            exit 0
+          fi
+
+          if [[ ! "$PR_TITLE" =~ $conventional ]]; then
+            echo "::error::PR title does not follow Conventional Commits."
+            echo ""
+            echo "Expected format:  <type>(<optional scope>): <subject>"
+            echo "Valid types:      feat fix docs style refactor perf test build ci chore revert"
+            echo "Scope (optional): lowercase letters, digits, and , . / -"
+            echo ""
+            echo "Examples:"
+            echo "  feat(estimates): add line-item markup"
+            echo "  fix: prevent crash on empty takeoff upload"
+            echo "  chore(deps): bump drizzle-orm to 0.35"
+            echo ""
+            echo "Your title: $PR_TITLE"
+            echo ""
+            echo "The title becomes the squash-merge commit subject. See docs/gitflow/README.md."
+            exit 1
+          fi
+
+          # Dependabot titles embed full package names/paths and can't be
+          # shortened by config, so the bot is exempt from the length cap.
+          if [ "${#PR_TITLE}" -gt 100 ] && [ "$PR_AUTHOR" != "dependabot[bot]" ]; then
+            echo "::error::PR title is ${#PR_TITLE} characters; keep the subject to 100 or fewer."
+            echo "The title becomes the squash-merge commit subject, so keep it short."
+            exit 1
+          fi
+
+          echo "PR title OK: $PR_TITLE"
+
+  # Enforces the GitFlow branch policy described in docs/gitflow/README.md.
+  branch-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce GitFlow branch policy
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Phase-in guard: until scripts/gitflow/bootstrap.sh creates the
+          # develop branch, this check passes with a notice so the GitFlow
+          # setup PR itself (and any pre-migration PRs) are not blocked.
+          # It arms itself automatically once develop exists on origin.
+          # Only a confirmed 404 disarms the check — any other API failure
+          # fails the job so enforcement can never be silently skipped.
+          if api_err=$(gh api "repos/$GITHUB_REPOSITORY/branches/develop" --silent 2>&1); then
+            : # develop exists — enforce the policy below
+          elif echo "$api_err" | grep -q "HTTP 404"; then
+            echo "::notice::GitFlow is not bootstrapped yet ('develop' branch does not exist). Branch policy is not enforced until scripts/gitflow/bootstrap.sh runs."
+            exit 0
+          else
+            echo "::error::Could not determine whether 'develop' exists (non-404 API failure); refusing to skip policy enforcement."
+            echo "$api_err"
+            exit 1
+          fi
+
+          # revert-<pr>-<branch> is the branch GitHub's "Revert" button creates.
+          allowed='^(main|develop|revert-[0-9]+-.+|(feature|bugfix|hotfix|release|chore|docs|refactor|test|perf|ci|build|experiment|claude|dependabot|backmerge)/.+)$'
+          to_main='^(release|hotfix)/'
+          to_develop='^((feature|bugfix|chore|docs|refactor|test|perf|ci|build|experiment|claude)/.+|(release|hotfix)/|backmerge/|dependabot/|revert-[0-9]+-.+)'
+
+          if [[ ! "$HEAD" =~ $allowed ]]; then
+            echo "::error::Branch name '$HEAD' does not follow the GitFlow naming convention."
+            echo ""
+            echo "Branches must use one of these prefixes:"
+            echo "  feature/  bugfix/  hotfix/  release/  chore/  docs/  refactor/"
+            echo "  test/  perf/  ci/  build/  experiment/  claude/"
+            echo ""
+            echo "Example: feature/estimate-pdf-export"
+            echo "Rename with: git branch -m feature/<name> && git push origin feature/<name>"
+            echo ""
+            echo "See docs/gitflow/README.md for the full branching model."
+            exit 1
+          fi
+
+          if [ "$BASE" = "main" ]; then
+            if [[ ! "$HEAD" =~ $to_main ]]; then
+              echo "::error::PRs into 'main' are releases: only release/x.y.z or hotfix/x.y.z branches may target it. '$HEAD' may not."
+              echo ""
+              echo "Every merge into main is a production deploy and gets tagged vX.Y.Z."
+              echo "Day-to-day work targets 'develop' instead:"
+              echo "  - Retarget this PR's base branch to 'develop', or"
+              echo "  - If this is a release, branch release/x.y.z from develop first."
+              echo ""
+              echo "See docs/gitflow/README.md for the full branching model."
+              exit 1
+            fi
+          elif [ "$BASE" = "develop" ]; then
+            if [[ ! "$HEAD" =~ $to_develop ]]; then
+              echo "::error::Branch '$HEAD' may not target 'develop'."
+              echo ""
+              echo "PRs into develop must come from a work branch (feature/, bugfix/,"
+              echo "chore/, docs/, refactor/, test/, perf/, ci/, build/, experiment/,"
+              echo "claude/, dependabot/) or from release/, hotfix/, backmerge/ branches."
+              echo ""
+              echo "See docs/gitflow/README.md for the full branching model."
+              exit 1
+            fi
+          fi
+
+          echo "Branch policy OK: '$HEAD' -> '$BASE'"

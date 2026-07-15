@@ -1,0 +1,80 @@
+name: Backmerge
+
+# After anything lands on main (release, hotfix), sync it back into develop
+# via the evergreen backmerge/main branch and a PR. The PR must be merged
+# with a MERGE COMMIT (not squash) to keep main's history in develop.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: backmerge-main
+
+jobs:
+  backmerge:
+    runs-on: ubuntu-latest
+    # With the default GITHUB_TOKEN, GitHub deliberately does NOT fire
+    # workflows (CI, PR Checks) on the PR this job creates, so its required
+    # checks stay pending until someone closes/reopens the PR or pushes an
+    # empty commit to backmerge/main. Setting a BACKMERGE_TOKEN secret (a
+    # fine-grained PAT with contents + pull-requests write) makes the PR's
+    # checks run automatically.
+    env:
+      GH_TOKEN: ${{ secrets.BACKMERGE_TOKEN || github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.BACKMERGE_TOKEN || github.token }}
+      - name: Sync main into develop via backmerge/main
+        run: |
+          # Guard: nothing to do until bootstrap creates develop.
+          if ! git ls-remote --exit-code --heads origin develop >/dev/null; then
+            echo "::notice::No 'develop' branch on origin; GitFlow is not bootstrapped yet. Nothing to backmerge."
+            exit 0
+          fi
+
+          git fetch origin develop
+          if git merge-base --is-ancestor origin/main origin/develop; then
+            echo "develop already up to date: origin/main is an ancestor of origin/develop."
+            exit 0
+          fi
+
+          # Force-update the single evergreen automation branch to main's tip.
+          git push origin +HEAD:refs/heads/backmerge/main
+
+          open_prs="$(gh pr list --head backmerge/main --base develop --state open --json number --jq length)"
+          if [ "$open_prs" -eq 0 ]; then
+            cat > "$RUNNER_TEMP/backmerge-body.md" <<'EOF'
+          Automated back-merge of `main` into `develop` after a release or hotfix.
+
+          **Merge this PR with a merge commit — do NOT squash.** Squashing rewrites
+          the release commits, so `develop` would immediately diverge from `main`
+          again and this PR would keep reappearing.
+
+          If this PR has conflicts, resolve them by merging `develop` into the
+          backmerge branch and pushing:
+
+          ```
+          git fetch origin
+          git checkout -B backmerge/main origin/backmerge/main
+          git merge origin/develop   # resolve conflicts, commit
+          git push origin backmerge/main
+          ```
+
+          See docs/gitflow/README.md for the full branching model.
+          EOF
+            gh pr create \
+              --base develop \
+              --head backmerge/main \
+              --title "chore(backmerge): sync main into develop" \
+              --body-file "$RUNNER_TEMP/backmerge-body.md"
+          else
+            echo "An open backmerge PR already exists; it now includes the new commits from main."
+          fi

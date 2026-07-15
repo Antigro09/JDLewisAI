@@ -1,0 +1,29 @@
+# Configuration for GitHub auto-generated release notes.
+# Used when a vX.Y.Z release is created after a release/* or hotfix/* PR
+# merges into main. Categorization is driven by PR labels.
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+  categories:
+    - title: "⚠️ Breaking changes"
+      labels:
+        - breaking-change
+    - title: "🚀 Features"
+      labels:
+        - enhancement
+        - feature
+    - title: "🐛 Bug fixes"
+      labels:
+        - bug
+        - fix
+    - title: "🧰 Maintenance & dependencies"
+      labels:
+        - chore
+        - dependencies
+    - title: "📚 Documentation"
+      labels:
+        - documentation
+    - title: "Other changes"
+      labels:
+        - "*"

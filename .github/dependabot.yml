@@ -1,0 +1,87 @@
+# Dependabot configuration for ContractorAI.
+#
+# NOTE: All update PRs target the `develop` branch per GitFlow. Dependabot
+# activates once `develop` exists on GitHub — it is created post-merge by
+# scripts/gitflow/bootstrap.sh. Until then, Dependabot reports a missing
+# target branch and opens no PRs.
+version: 2
+updates:
+  # Web app (Next.js) — root package.json
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    target-branch: develop
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Desktop app (Electron)
+  - package-ecosystem: npm
+    directory: "/electron"
+    schedule:
+      interval: weekly
+    target-branch: develop
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      electron-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Mobile app (Capacitor)
+  - package-ecosystem: npm
+    directory: "/mobile"
+    schedule:
+      interval: weekly
+    target-branch: develop
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      mobile-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # Takeoff Engine (Python FastAPI service)
+  - package-ecosystem: pip
+    directory: "/takeoff-engine"
+    schedule:
+      interval: weekly
+    target-branch: develop
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      pip-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # GitHub Actions workflows
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    target-branch: develop
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - minor
+          - patch
