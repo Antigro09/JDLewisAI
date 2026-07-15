@@ -1,5 +1,8 @@
 import { SignJWT, jwtVerify } from "jose";
 import { env } from "@/lib/env";
+// Type-only import: erased at compile time, so this stays edge-safe for
+// middleware (lib/db/schema's runtime deps never load).
+import type { Role } from "@/lib/db/schema";
 
 export const SESSION_COOKIE = "session";
 const ALG = "HS256";
@@ -9,7 +12,7 @@ export type SessionClaims = {
   sub: string;
   email: string;
   name: string;
-  role: "ADMIN" | "MEMBER";
+  role: Role;
   // users.tokenVersion at mint time. Verification stays stateless; the
   // server-side user lookup rejects sessions whose tv is behind the DB.
   tv: number;
@@ -37,7 +40,10 @@ export async function verifySessionToken(
       sub: String(payload.sub),
       email: String(payload.email),
       name: String(payload.name ?? ""),
-      role: payload.role === "ADMIN" ? "ADMIN" : "MEMBER",
+      role:
+        payload.role === "SUPERADMIN" || payload.role === "ADMIN"
+          ? payload.role
+          : "MEMBER",
       // Missing claim = pre-tokenVersion session; treat as 0 so existing
       // sessions keep working until the user's version is bumped.
       tv: typeof payload.tv === "number" ? payload.tv : 0,

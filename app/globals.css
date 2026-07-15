@@ -429,3 +429,42 @@ body {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* ---- Desktop shell (Electron) -------------------------------------------
+   The preload script adds .desktop-shell to <html> before hydration. The
+   branded titlebar (components/desktop-titlebar.tsx) renders on every page
+   but only becomes visible here; the whole bar is a drag region and the OS
+   overlays native caption buttons on its right edge (titleBarOverlay).
+   Browsers never match these rules. */
+html.desktop-shell {
+  --desktop-titlebar-h: 40px;
+}
+.desktop-titlebar {
+  display: none;
+}
+html.desktop-shell .desktop-titlebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  display: flex;
+  /* Stops short of the native caption buttons so nothing renders under them. */
+  width: env(titlebar-area-width, 100%);
+  -webkit-app-region: drag;
+}
+html.desktop-shell .desktop-titlebar a,
+html.desktop-shell .desktop-titlebar button,
+html.desktop-shell .desktop-titlebar [data-no-drag] {
+  -webkit-app-region: no-drag;
+}
+html.desktop-shell body {
+  padding-top: var(--desktop-titlebar-h);
+}
+/* Full-height layouts must shrink by the bar height: app/(app)/layout.tsx
+   (h-dvh) and app/(auth)/layout.tsx (min-h-screen). */
+html.desktop-shell .h-dvh {
+  height: calc(100dvh - var(--desktop-titlebar-h));
+}
+html.desktop-shell .min-h-screen {
+  min-height: calc(100dvh - var(--desktop-titlebar-h));
+}

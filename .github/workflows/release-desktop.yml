@@ -19,6 +19,13 @@ jobs:
           cache-dependency-path: electron/package-lock.json
       - run: npm ci
         working-directory: electron
+      # Bake the hosted origin + desktop-gate handshake into the build
+      # (electron/app-config.json — packaged apps can't read env vars).
+      - run: node scripts/write-app-config.mjs
+        working-directory: electron
+        env:
+          DESKTOP_APP_URL: ${{ secrets.DESKTOP_APP_URL }}
+          DESKTOP_GATE_SECRET: ${{ secrets.DESKTOP_GATE_SECRET }}
       - run: npm run build -- --publish always
         working-directory: electron
         env:

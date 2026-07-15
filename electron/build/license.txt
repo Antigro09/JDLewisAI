@@ -1,0 +1,50 @@
+END USER LICENSE AGREEMENT
+ContractorAI Desktop — Version 2026-07-11.1 (updated 2026-07-11)
+
+DRAFT FOR ATTORNEY REVIEW — this document was prepared as a working draft and has not been reviewed by legal counsel. It is not legal advice and is not final. Have a licensed attorney review and approve it before relying on it.
+
+1. AGREEMENT
+
+This End User License Agreement ("EULA") is between [LEGAL ENTITY NAME] ("ContractorAI", "we") and the business entity licensed to use the software and its authorized users ("you"). By installing or using the ContractorAI desktop application (the "Software"), you agree to this EULA. If you do not agree, do not install the Software.
+
+2. LICENSE GRANT
+
+We grant you a limited, non-exclusive, non-transferable, non-sublicensable license to install and use the Software, in object code form only, on devices used by seats licensed to your organization, solely to access the ContractorAI service (the "Service").
+
+3. RESTRICTIONS
+
+You may not: (a) copy (except one backup copy), distribute, rent, lease, lend, sell, or sublicense the Software; (b) reverse engineer, decompile, or disassemble the Software, or attempt to derive its source code, except to the extent this restriction is prohibited by applicable law; (c) remove or alter proprietary notices; (d) circumvent license enforcement, update entitlement, or the Service's access controls; or (e) use the Software to build a competing product.
+
+4. THE SERVICE; TERMS AND PRIVACY
+
+The Software is a client for the Service. Your use of the Service is governed by the ContractorAI Terms of Service and Privacy Policy, presented in the application. This EULA governs the installed Software itself.
+
+5. UPDATES
+
+The Software checks for and installs updates automatically. Patch and minor updates within your licensed major version are provided automatically; new major versions require the corresponding license. Updates may modify or remove features.
+
+6. AI OUTPUT DISCLAIMER
+
+The Service accessed through the Software generates content using artificial intelligence. AI output may be inaccurate and must be independently verified before you rely on it. It is not professional engineering, architectural, accounting, or legal advice. Material takeoffs and estimates are machine-assisted approximations, not guaranteed quantities or costs. See the Terms of Service for the full disclaimer.
+
+7. WARRANTY DISCLAIMER
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. WE DO NOT WARRANT THAT THE SOFTWARE WILL BE UNINTERRUPTED OR ERROR-FREE.
+
+8. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, WE ARE NOT LIABLE FOR INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR LOST PROFITS, LOST DATA, OR BUSINESS INTERRUPTION, ARISING FROM THE SOFTWARE, AND OUR TOTAL LIABILITY UNDER THIS EULA IS LIMITED TO THE FEES PAID FOR THE SOFTWARE AND SERVICE IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM.
+
+9. THIRD-PARTY COMPONENTS
+
+The Software includes third-party open-source components (including Electron, Chromium, and Node.js) licensed under their own terms; the corresponding notices are included with the Software distribution.
+
+10. TERM AND TERMINATION
+
+This EULA is effective until terminated. It terminates automatically if you breach it or when your organization's access to the Service ends. Upon termination you must uninstall the Software. Sections 6–9 and 11 survive.
+
+11. GENERAL
+
+This EULA is governed by the laws of [GOVERNING LAW STATE], excluding conflict-of-laws rules. If any provision is unenforceable, the remainder stays in effect. This EULA, together with the Terms of Service and Privacy Policy, is the entire agreement concerning the Software.
+
+Contact: [LEGAL ENTITY NAME] · [MAILING ADDRESS] · [CONTACT EMAIL]

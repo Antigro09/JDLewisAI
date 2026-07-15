@@ -2,6 +2,7 @@
 
 import { ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui";
+import { TAKEOFF_UI_CAPTION } from "@/lib/legal/disclaimers";
 import type { MaterialLine, TakeoffIssue, TakeoffReport } from "@/lib/tools/material-takeoff";
 
 const TRADE_LABELS: Record<string, string> = {
@@ -81,6 +82,9 @@ export function MaterialsPreview({
           <h2 className="text-sm font-semibold text-ember-text">Materials</h2>
           <p className="text-xs text-ember-muted">
             {report ? `${report.measurements.length} measurements bridged` : "No bridged report yet"}
+          </p>
+          <p className="mt-0.5 text-[11px] leading-snug text-ember-faint">
+            {TAKEOFF_UI_CAPTION}
           </p>
         </div>
         {sheetLink ? (

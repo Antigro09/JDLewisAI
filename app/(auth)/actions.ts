@@ -12,6 +12,7 @@ import {
   MIN_PASSWORD_LENGTH,
 } from "@/lib/auth/password";
 import { setSession, clearSession } from "@/lib/auth/server";
+import { desktopGateEnabled } from "@/lib/desktop/gate";
 import {
   checkRateLimit,
   resetRateLimit,
@@ -107,6 +108,11 @@ export async function signUpAction(
   _prev: AuthState,
   formData: FormData,
 ): Promise<AuthState> {
+  // Desktop-only production: self-signup is off; the owner provisions
+  // accounts from /owner. Checked before any input/DB work.
+  if (desktopGateEnabled()) {
+    return { error: "Sign-up is disabled. Contact your administrator." };
+  }
   const name = String(formData.get("name") ?? "").trim();
   const parsed = signUpSchema.safeParse({
     email: formData.get("email"),

@@ -1,5 +1,6 @@
 import { Markdown } from "@/components/markdown";
 import { PrintButton } from "@/components/print-button";
+import { DOC_FOOTER_DISCLAIMER } from "@/lib/legal/disclaimers";
 import type { DocumentTemplate } from "@/lib/db/schema";
 
 export function BrandedDocument({
@@ -53,6 +54,17 @@ export function BrandedDocument({
             {template.footerText}
           </div>
         )}
+        {/* Fixed disclaimer on every generated document — prints too. */}
+        <div
+          className={
+            template?.footerText
+              ? "mt-3 text-[11px] leading-snug text-neutral-400"
+              : "mt-8 border-t pt-4 text-[11px] leading-snug text-neutral-400"
+          }
+          style={template?.footerText ? undefined : { borderColor: brand }}
+        >
+          {DOC_FOOTER_DISCLAIMER}
+        </div>
       </div>
     </div>
   );

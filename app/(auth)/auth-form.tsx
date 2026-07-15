@@ -10,10 +10,12 @@ export function AuthForm({
   mode,
   next,
   googleStatus,
+  signupEnabled = true,
 }: {
   mode: "signin" | "signup";
   next?: string;
   googleStatus?: string;
+  signupEnabled?: boolean;
 }) {
   const action = mode === "signin" ? signInAction : signUpAction;
   const [state, formAction, pending] = useActionState<AuthState, FormData>(
@@ -91,16 +93,33 @@ export function AuthForm({
               ? "Sign in"
               : "Create account"}
         </Button>
+
+        <p className="text-center text-xs text-neutral-400">
+          By {mode === "signin" ? "signing in" : "creating an account"} you
+          agree to the{" "}
+          <Link href="/legal/terms" className="underline hover:text-neutral-500">
+            Terms of Service
+          </Link>{" "}
+          and{" "}
+          <Link href="/legal/privacy" className="underline hover:text-neutral-500">
+            Privacy Policy
+          </Link>
+          .
+        </p>
       </form>
 
       <p className="mt-4 text-center text-sm text-neutral-500">
         {mode === "signin" ? (
-          <>
-            No account?{" "}
-            <Link href="/signup" className="font-medium text-brand-600 hover:underline">
-              Sign up
-            </Link>
-          </>
+          signupEnabled ? (
+            <>
+              No account?{" "}
+              <Link href="/signup" className="font-medium text-brand-600 hover:underline">
+                Sign up
+              </Link>
+            </>
+          ) : (
+            <>Need an account? Contact your administrator.</>
+          )
         ) : (
           <>
             Already have an account?{" "}

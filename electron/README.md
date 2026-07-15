@@ -1,7 +1,9 @@
 # ContractorAI Desktop
 
 Electron package for the downloadable ContractorAI app. It is a thin shell that loads
-the deployed ContractorAI web app and adds meeting-detection + loopback-audio IPC.
+the deployed ContractorAI web app with professional window chrome (custom branded
+titlebar, no OS menu bar), the desktop-only gate handshake, license-gated auto-update,
+and meeting-detection + loopback-audio IPC.
 
 ## Development
 
@@ -14,28 +16,31 @@ npm --prefix electron run dev
 
 # point the shell at a different server
 $env:CONTRACTOR_AI_URL = 'http://localhost:3109'; npm --prefix electron run dev
+
+# exercise the desktop-only gate locally (set the same value in the web app's .env.local)
+$env:DESKTOP_GATE_SECRET = '<same value as the server>'; npm --prefix electron run dev
 ```
 
-`CONTRACTOR_AI_URL` overrides the URL the shell loads. It is a **dev-only** convenience —
-end users don't have it set (see below).
+`CONTRACTOR_AI_URL` / `DESKTOP_GATE_SECRET` env overrides are **dev-only** conveniences —
+end users don't have them set (see below).
 
-## IMPORTANT: production URL before shipping to end users
+## Production configuration (app-config.json)
 
-The shell falls back to `http://localhost:3000` when `CONTRACTOR_AI_URL` is unset.
-**Environment variables do not exist on user machines** — an installed build with the
-localhost fallback shows the connection-error screen forever. Before cutting an
-end-user release, flip the fallback literal in `main.js` to the deployed https URL:
+Packaged builds read `electron/app-config.json` — **environment variables do not exist
+on user machines**. The file is generated at build time by
+`scripts/write-app-config.mjs` from `DESKTOP_APP_URL` (the hosted origin) and
+`DESKTOP_GATE_SECRET` (the desktop-only gate handshake); CI feeds both from repo
+secrets. It contains a secret, so it is gitignored — never commit it.
 
-```diff
--const APP_URL = process.env.CONTRACTOR_AI_URL || "http://localhost:3000";
-+const APP_URL = process.env.CONTRACTOR_AI_URL || "https://app.contractorai.example.com";
-```
-
-(One line. Keep the env override — it's still how devs point local builds elsewhere.)
+A packaged build without `app-config.json` refuses to start with an error dialog
+(instead of silently loading localhost forever).
 
 ## Building the installer
 
 ```powershell
+# generate app-config.json first (packaged builds require it)
+$env:DESKTOP_APP_URL = 'https://app.example.com'; $env:DESKTOP_GATE_SECRET = '<secret>'
+node electron/scripts/write-app-config.mjs
 npm --prefix electron run build
 ```
 
@@ -47,15 +52,34 @@ download and apply normally on unsigned builds.
 If `build/icon.ico` / `build/icon.png` exist, electron-builder picks them up
 automatically; without them it uses the default Electron icon (no config needed).
 
-## Auto-update
+## Auto-update (license-gated)
 
-The app uses `electron-updater` with the GitHub provider (`publish` block in
-`package.json`, pointing at `Antigro09/JDLewisAI` releases). On launch — and every
-4 hours after — a packaged app checks the latest GitHub release's `latest.yml`,
-downloads a newer installer in the background, and installs it on quit.
+Installers are still **published** to GitHub Releases (`publish` block in
+`package.json`, `Antigro09/JDLewisAI` — works after the repo goes private), but
+installed apps do **not** talk to GitHub. At runtime the updater uses a generic feed
+served by the hosted app at `/api/desktop/update/<installedMajor>/…`, which reads the
+(private) GitHub releases server-side and applies the license gate:
+
+- Patch/minor releases within the installed major flow to **every** client.
+- A higher **major** is only offered when the client company's entitled major
+  (set on the `/owner` console) covers it. Everyone else keeps their version,
+  still receiving patches.
+- After sign-in the web app hands the shell a device token
+  (`update:setDeviceToken` IPC, stored via `safeStorage`) that proves the
+  company entitlement to the feed.
+
+**Installs are user-initiated.** On launch — and every 4 hours after — a packaged
+app checks the feed and downloads a newer installer quietly in the background,
+but nothing is ever installed behind the user's back (`autoInstallOnAppQuit` is
+off). Once a build is staged, an unobtrusive **Update** pill appears in the app's
+titlebar (`components/desktop-titlebar.tsx`); clicking it shows the version and a
+"Restart and update" button. Ignoring it is fine — the client keeps working on
+their current version indefinitely.
 
 - Update checks only run in **packaged** builds (`app.isPackaged`); `npm run dev`
-  never checks (unpackaged runs have no `app-update.yml` and would throw).
+  never checks (unpackaged runs have no `app-update.yml` and would throw). To work
+  on the update UI, fake a staged update:
+  `$env:CONTRACTOR_AI_FAKE_UPDATE = '9.9.9'; npm --prefix electron run dev`
 - **Auto-update only works for NSIS installs.** Never switch `win.target` away from
   `["nsis"]` — portable/zip targets can't self-update.
 
@@ -69,6 +93,11 @@ downloads a newer installer in the background, and installs it on quit.
 **Tagging without bumping the version ships an update users never receive:**
 `electron-updater` compares the installed version against `latest.yml`, so a release
 that re-publishes the same version number is ignored by every installed copy.
+
+**Major releases are the paid tier.** Publishing `2.0.0` does nothing for clients
+until you raise their company's entitled major to 2 on `/owner`. To keep shipping
+fixes to 1.x clients afterwards, tag `desktop-v1.x.y` maintenance releases from a
+branch — the feed serves each client the newest release within their allowed major.
 
 ## Current scope
 

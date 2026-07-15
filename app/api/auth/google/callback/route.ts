@@ -9,6 +9,7 @@ import {
   getGoogleAuthProfile,
   verifyGoogleAuthState,
 } from "@/lib/auth/google";
+import { desktopGateEnabled } from "@/lib/desktop/gate";
 import { recordAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +43,10 @@ export async function GET(req: Request) {
 
     let user = (await db.select().from(users).where(eq(users.email, email)))[0];
     if (!user) {
+      // Desktop-only production: no self-provisioning, even via Google.
+      // (/api/* sits outside the gated middleware matcher, so without this a
+      // browser could hand-craft the OAuth flow and mint an account.)
+      if (desktopGateEnabled()) return loginRedirect(req, "domain");
       const [created] = await db
         .insert(users)
         .values({

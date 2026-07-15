@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { automations } from "@/lib/db/schema";
 import { recordAudit } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications";
+import { AUTOMATION_EMAIL_FOOTER } from "@/lib/legal/disclaimers";
 import { getValidAccessToken, GoogleNotConnectedError } from "@/lib/google/client";
 import { driveSearch, driveReadFile } from "@/lib/google/drive";
 import { docsCreate, docsAppendText, docsReplaceText } from "@/lib/google/docs";
@@ -555,6 +556,11 @@ export async function runGoogleTool(
     if (name === "gmail_send" && ctx?.unattended) {
       const blocked = await gateUnattendedSend(userId, ctx, input);
       if (blocked) return blocked;
+      // Unattended sends carry an AI-authorship footer (no human reviewed the
+      // message before it left). Interactive sends and drafts are excluded —
+      // a person approves those. Appended after the gate so allowlist/caps
+      // evaluate the original input.
+      input = { ...input, body: `${String(input.body ?? "")}${AUTOMATION_EMAIL_FOOTER}` };
     }
     const token = await getValidAccessToken(userId);
     const result = await tool.exec(token, input);

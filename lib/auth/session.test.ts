@@ -54,8 +54,18 @@ describe("session tokens", () => {
     expect(claims?.tv).toBe(0);
   });
 
-  it("normalizes unexpected role values to MEMBER", async () => {
+  it("preserves the SUPERADMIN role", async () => {
     const token = await new SignJWT({ ...CLAIMS, role: "SUPERADMIN" })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("30d")
+      .sign(new TextEncoder().encode(process.env.AUTH_SECRET!));
+    const claims = await verifySessionToken(token);
+    expect(claims?.role).toBe("SUPERADMIN");
+  });
+
+  it("normalizes unexpected role values to MEMBER", async () => {
+    const token = await new SignJWT({ ...CLAIMS, role: "ROOT" })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
       .setExpirationTime("30d")

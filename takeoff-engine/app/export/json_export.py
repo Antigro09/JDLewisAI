@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.adapters.base import ExportAdapter
+from app.export.disclaimer import DISCLAIMER
 
 
 class JSONExportAdapter(ExportAdapter):
@@ -39,11 +40,7 @@ class JSONExportAdapter(ExportAdapter):
             "schema_version": "1.0",
             "generated_at": datetime.now(UTC).isoformat(),
             "project": payload.get("project", {"id": project_id}),
-            "disclaimer": (
-                "Machine-assisted takeoff. Quantities are derived from calibrated "
-                "geometry and require estimator review; items with needs_review=true "
-                "have unresolved evidence problems. No accuracy guarantee is made."
-            ),
+            "disclaimer": DISCLAIMER,
             "sheets": payload.get("sheets", []),
             "quantities": quantities,
             "evidence": referenced,

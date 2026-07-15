@@ -7,6 +7,7 @@ from typing import Any
 
 from app.adapters.base import ExportAdapter
 from app.export.audit import attributes_json, audit_summary
+from app.export.disclaimer import DISCLAIMER
 
 
 class CSVExportAdapter(ExportAdapter):
@@ -19,6 +20,7 @@ class CSVExportAdapter(ExportAdapter):
                 "review_status", "audit_notes", "source_geometry_ids", "source_ocr_span_ids",
                 "attributes"]
         with open(out_path, "w", newline="") as f:
+            f.write(f"# {DISCLAIMER}\n")
             writer = csv.writer(f)
             writer.writerow(cols)
             for q in payload["quantities"]:

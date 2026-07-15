@@ -1134,9 +1134,17 @@ export function HomeLanding() {
           </span>
           © 2026 ContractorAI
         </div>
-        <Link href={SIGN_IN_HREF} style={{ fontSize: 13, fontWeight: 600, color: t.textMuted }}>
-          Sign in
-        </Link>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <Link href="/legal/terms" style={{ fontSize: 13, color: t.textMuted }}>
+            Terms
+          </Link>
+          <Link href="/legal/privacy" style={{ fontSize: 13, color: t.textMuted }}>
+            Privacy
+          </Link>
+          <Link href={SIGN_IN_HREF} style={{ fontSize: 13, fontWeight: 600, color: t.textMuted }}>
+            Sign in
+          </Link>
+        </div>
       </div>
     </div>
   );

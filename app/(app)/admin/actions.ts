@@ -10,9 +10,22 @@ import { PLUGINS, setOrgPlugin } from "@/lib/plugins";
 import { getOrgTemplate } from "@/lib/templates/render";
 import { readUploadOrThrow } from "@/lib/uploads";
 
+/** Only a SUPERADMIN may touch a SUPERADMIN account or hand out the role —
+ * otherwise a company ADMIN could escalate themselves or lock out the owner. */
+async function assertCanModify(actorRole: Role, userId: string): Promise<boolean> {
+  if (actorRole === "SUPERADMIN") return true;
+  const rows = await db
+    .select({ role: users.role })
+    .from(users)
+    .where(eq(users.id, userId));
+  return rows[0] !== undefined && rows[0].role !== "SUPERADMIN";
+}
+
 export async function setUserRole(userId: string, role: Role) {
   const admin = await requireAdmin();
   if (admin.id === userId) return; // don't change your own role (avoid lockout)
+  if (role === "SUPERADMIN" && admin.role !== "SUPERADMIN") return;
+  if (!(await assertCanModify(admin.role, userId))) return;
   // tokenVersion bump revokes the user's outstanding sessions so the new role
   // takes effect immediately, not at next sign-in.
   await db
@@ -25,6 +38,7 @@ export async function setUserRole(userId: string, role: Role) {
 export async function setUserDisabled(userId: string, disabled: boolean) {
   const admin = await requireAdmin();
   if (admin.id === userId) return; // can't disable yourself
+  if (!(await assertCanModify(admin.role, userId))) return;
   await db
     .update(users)
     .set({ disabled, tokenVersion: sql`${users.tokenVersion} + 1` })
@@ -35,6 +49,7 @@ export async function setUserDisabled(userId: string, disabled: boolean) {
 export async function deleteUser(userId: string) {
   const admin = await requireAdmin();
   if (admin.id === userId) return; // can't delete yourself
+  if (!(await assertCanModify(admin.role, userId))) return;
   await db.delete(users).where(eq(users.id, userId));
   revalidatePath("/admin");
 }

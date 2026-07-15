@@ -1,4 +1,5 @@
 import { AuthForm } from "../auth-form";
+import { desktopGateEnabled } from "@/lib/desktop/gate";
 
 export default async function LoginPage({
   searchParams,
@@ -6,5 +7,12 @@ export default async function LoginPage({
   searchParams: Promise<{ next?: string; google?: string }>;
 }) {
   const { next, google } = await searchParams;
-  return <AuthForm mode="signin" next={next} googleStatus={google} />;
+  return (
+    <AuthForm
+      mode="signin"
+      next={next}
+      googleStatus={google}
+      signupEnabled={!desktopGateEnabled()}
+    />
+  );
 }

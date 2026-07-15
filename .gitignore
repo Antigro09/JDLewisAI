@@ -25,6 +25,9 @@ yarn-error.log*
 .env
 .env*.local
 
+# desktop build config (contains the gate secret; written at build time)
+/electron/app-config.json
+
 # prisma
 /prisma/*.db
 

@@ -1,4 +1,5 @@
 import { formatDate } from "@/lib/utils";
+import { MINUTES_CAVEAT } from "@/lib/legal/disclaimers";
 
 type Bundle = {
   meeting: {
@@ -76,12 +77,15 @@ export function actionItemsRows(bundle: Bundle): (string | number)[][] {
 }
 
 export function actionItemsCsv(bundle: Bundle) {
-  return actionItemsRows(bundle)
+  const rows = actionItemsRows(bundle)
     .map((r) => r.map(csvCell).join(","))
     .join("\n");
+  return `${rows}\n\n${csvCell(MINUTES_CAVEAT)}`;
 }
 
-export function meetingToMarkdown(bundle: Bundle) {
+/** Minutes markdown without the caveat — meetingToHtml appends its own
+ * styled caveat, so the shared body must not double it. */
+function buildMeetingMarkdown(bundle: Bundle) {
   if (bundle.meeting.minutesMarkdown) return bundle.meeting.minutesMarkdown;
   const participants = bundle.participants.length
     ? bundle.participants
@@ -159,8 +163,12 @@ ${transcript}
 `;
 }
 
+export function meetingToMarkdown(bundle: Bundle) {
+  return `${buildMeetingMarkdown(bundle).trimEnd()}\n\n---\n\n_${MINUTES_CAVEAT}_\n`;
+}
+
 export function meetingToHtml(bundle: Bundle) {
-  const md = meetingToMarkdown(bundle);
+  const md = buildMeetingMarkdown(bundle);
   const html = md
     .split("\n")
     .map((line) => {
@@ -183,7 +191,9 @@ export function meetingToHtml(bundle: Bundle) {
     td, th { border: 1px solid #ddd; padding: 6px; }
   </style>
 </head>
-<body>${html}</body>
+<body>${html}
+<p class="caveat" style="margin-top:24px;border-top:1px solid #ddd;padding-top:12px;font-size:12px;color:#737373;">${escapeHtml(MINUTES_CAVEAT)}</p>
+</body>
 </html>`;
 }
 
@@ -199,5 +209,8 @@ ${bundle.meeting.summary ?? "Summary not generated yet."}
 
 Action items:
 ${actions}
+
+--
+${MINUTES_CAVEAT}
 `;
 }

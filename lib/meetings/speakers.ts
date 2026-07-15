@@ -35,12 +35,16 @@ export async function listSpeakerProfiles(companyId: string): Promise<SpeakerPro
     .orderBy(asc(speakerProfiles.displayName));
 }
 
-/** Register a person as a company speaker (optionally with a voiceprint). */
+/** Register a person as a company speaker (optionally with a voiceprint).
+ * When an embedding (biometric identifier) is stored, the caller must have
+ * collected consent first (enforced in the enroll-voice route) and pass the
+ * consent record here so it's persisted alongside the voiceprint. */
 export async function enrollSpeaker(opts: {
   companyId: string;
   displayName: string;
   userId?: string | null;
   embedding?: number[] | null;
+  consent?: { at: Date; textVersion: string; byUserId: string } | null;
 }): Promise<SpeakerProfile> {
   const [row] = await db
     .insert(speakerProfiles)
@@ -52,6 +56,9 @@ export async function enrollSpeaker(opts: {
         ? encryptSecret(JSON.stringify(opts.embedding))
         : null,
       enrollmentStatus: opts.embedding?.length ? "enrolled" : "not_started",
+      consentAt: opts.consent?.at ?? null,
+      consentTextVersion: opts.consent?.textVersion ?? null,
+      consentByUserId: opts.consent?.byUserId ?? null,
     })
     .returning();
   return row;

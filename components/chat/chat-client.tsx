@@ -41,6 +41,7 @@ import { Markdown } from "@/components/markdown";
 import { Button, Card, Spinner, Textarea } from "@/components/ui";
 import { EmberThinking } from "@/components/ember-thinking";
 import { cn } from "@/lib/utils";
+import { AI_CHAT_CAPTION } from "@/lib/legal/disclaimers";
 import { REASONING_MODES } from "@/lib/claude/modes";
 import { switchBranch, deleteMessage } from "@/app/(app)/chat/branch-actions";
 
@@ -1966,14 +1967,18 @@ export function ChatClient({
             )}
           </div>
 
-          {!googleConnected && (
-            <p className="mt-2 text-center text-xs text-neutral-400">
-              <Link href="/customize?tab=connections" className="text-brand-600 hover:underline dark:text-brand-400">
-                Connect Google
-              </Link>{" "}
-              to create real Docs, Sheets & send email from chat.
-            </p>
-          )}
+          <p className="mt-2 text-center text-xs text-neutral-400">
+            {AI_CHAT_CAPTION}
+            {!googleConnected && (
+              <>
+                {" · "}
+                <Link href="/customize?tab=connections" className="text-brand-600 hover:underline dark:text-brand-400">
+                  Connect Google
+                </Link>{" "}
+                to create real Docs, Sheets & send email from chat.
+              </>
+            )}
+          </p>
           </>
           )}
         </div>

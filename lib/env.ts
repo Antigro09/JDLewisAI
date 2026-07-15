@@ -46,6 +46,22 @@ const schema = z
     EMBEDDINGS_MODEL: z.string().min(1).optional(),
     EMBEDDINGS_BASE_URL: z.string().url().optional(),
     TAKEOFF_ENGINE_URL: z.string().url().optional(),
+    // Desktop-only production gate: when set, middleware only serves requests
+    // carrying this value in the x-desktop-key header (sent by the Electron
+    // shell) and public signup is disabled. Leave unset for local dev.
+    DESKTOP_GATE_SECRET: z
+      .string()
+      .min(16, "must be at least 16 characters (openssl rand -hex 32)")
+      .optional(),
+    // Fine-grained PAT with contents:read on the releases repo — lets the
+    // update proxy read GitHub Releases after the repo goes private.
+    GITHUB_RELEASES_TOKEN: z.string().min(1).optional(),
+    // "owner/repo" hosting the desktop installers (default applied in
+    // lib/desktop-update/github.ts).
+    GITHUB_RELEASES_REPO: z
+      .string()
+      .regex(/^[\w.-]+\/[\w.-]+$/, 'must look like "owner/repo"')
+      .optional(),
   })
   .superRefine((v, ctx) => {
     if (Boolean(v.GOOGLE_CLIENT_ID) !== Boolean(v.GOOGLE_CLIENT_SECRET)) {
@@ -80,6 +96,9 @@ const raw = {
   EMBEDDINGS_MODEL: clean(process.env.EMBEDDINGS_MODEL),
   EMBEDDINGS_BASE_URL: clean(process.env.EMBEDDINGS_BASE_URL),
   TAKEOFF_ENGINE_URL: clean(process.env.TAKEOFF_ENGINE_URL),
+  DESKTOP_GATE_SECRET: clean(process.env.DESKTOP_GATE_SECRET),
+  GITHUB_RELEASES_TOKEN: clean(process.env.GITHUB_RELEASES_TOKEN),
+  GITHUB_RELEASES_REPO: clean(process.env.GITHUB_RELEASES_REPO),
 };
 
 function loadEnv(): Env {

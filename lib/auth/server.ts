@@ -38,7 +38,14 @@ export async function requireUser(): Promise<AppUser> {
 
 export async function requireAdmin(): Promise<AppUser> {
   const user = await requireUser();
-  if (user.role !== "ADMIN") redirect("/chat");
+  // SUPERADMIN (the app owner) is a strict superset of ADMIN.
+  if (user.role !== "ADMIN" && user.role !== "SUPERADMIN") redirect("/chat");
+  return user;
+}
+
+export async function requireSuperadmin(): Promise<AppUser> {
+  const user = await requireUser();
+  if (user.role !== "SUPERADMIN") redirect("/chat");
   return user;
 }
 

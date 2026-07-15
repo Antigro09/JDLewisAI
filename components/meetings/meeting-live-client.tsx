@@ -19,22 +19,12 @@ import {
 import { Markdown } from "@/components/markdown";
 import { Badge, Button, Card, Input, Label, Select, Textarea } from "@/components/ui";
 import { cn } from "@/lib/utils";
+// Fallback notice when the company requires consent but hasn't written its own
+// (shared copy in lib/legal/disclaimers.ts — mentions third-party transcription).
+import { DEFAULT_RECORDING_CONSENT_TEXT } from "@/lib/legal/disclaimers";
 
-declare global {
-  interface Window {
-    contractorAI?: {
-      meetings?: {
-        startMeetingAudio?: (payload: Record<string, unknown>) => Promise<unknown>;
-        stopMeetingAudio?: (payload: Record<string, unknown>) => Promise<unknown>;
-        enableLoopbackAudio?: () => Promise<unknown>;
-        disableLoopbackAudio?: () => Promise<unknown>;
-        startDetection?: () => Promise<unknown>;
-        stopDetection?: () => Promise<unknown>;
-        onDetected?: (callback: (payload: unknown) => void) => () => void;
-      };
-    };
-  }
-}
+// window.contractorAI types live in types/desktop.d.ts (shared with the
+// desktop titlebar/bridge components).
 
 type Bundle = {
   meeting: {
@@ -86,11 +76,6 @@ type Bundle = {
   events: { id: string; type: string; title: string; confidence: number }[];
 };
 
-/** Shown when the company requires consent but hasn't written its own notice. */
-const DEFAULT_CONSENT_TEXT =
-  "This meeting will be recorded and transcribed by ContractorAI Meeting " +
-  "Intelligence. By continuing you confirm that all participants have been " +
-  "informed of, and consent to, the recording.";
 
 function confidenceClass(value: number) {
   if (value >= 80) return "text-green-600 dark:text-green-400";
@@ -665,7 +650,7 @@ export function MeetingLiveClient({
                 Recording consent required
               </h2>
               <p className="mt-1 whitespace-pre-wrap text-sm text-neutral-700 dark:text-neutral-200">
-                {consentText?.trim() || DEFAULT_CONSENT_TEXT}
+                {consentText?.trim() || DEFAULT_RECORDING_CONSENT_TEXT}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button size="sm" onClick={acknowledgeConsent} disabled={Boolean(busy)}>

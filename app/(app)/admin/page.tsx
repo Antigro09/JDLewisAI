@@ -236,11 +236,16 @@ export default async function AdminPage() {
             />
             <span>
               <span className="text-sm font-medium text-neutral-800 dark:text-neutral-100">
-                Require recording consent
+                Require recording consent (recommended)
               </span>
               <span className="block text-xs text-neutral-500 dark:text-neutral-400">
                 Users must acknowledge a recording notice before live capture can start;
-                auto-detected meetings wait for the acknowledgement too.
+                auto-detected meetings wait for the acknowledgement too.{" "}
+                <span className="font-medium text-amber-700 dark:text-amber-400">
+                  Disabling this means your company assumes full responsibility for
+                  complying with federal and state recording laws, including
+                  all-party-consent states.
+                </span>
               </span>
             </span>
           </label>

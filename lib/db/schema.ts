@@ -13,7 +13,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
-export type Role = "ADMIN" | "MEMBER";
+export type Role = "SUPERADMIN" | "ADMIN" | "MEMBER";
 export type InvoiceStatus = "APPROVED" | "NEEDS_REVIEW" | "DENIED" | "PENDING";
 export type CompanyRole = "OWNER" | "ADMIN" | "MEMBER";
 export type TakeoffStatus = "created" | "uploading" | "indexing" | "indexed" | "processing" | "review" | "failed";
@@ -141,6 +141,11 @@ export const users = pgTable("users", {
   // Bumped on password/role change or "sign out all devices"; JWTs carry the
   // version they were minted with and are rejected when stale.
   tokenVersion: integer("token_version").notNull().default(0),
+  // Clickwrap record: which TERMS_VERSION (lib/legal/version.ts) this user
+  // accepted and when. Null / stale version => gated to /accept-terms. The
+  // append-only audit_log keeps the full acceptance history across versions.
+  termsAcceptedAt: timestamp("terms_accepted_at"),
+  termsAcceptedVersion: text("terms_accepted_version"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -177,10 +182,17 @@ export const companies = pgTable("companies", {
   // older than N days. When consent is required, the client must show the
   // notice and the session records acknowledgement before capture.
   transcriptRetentionDays: integer("transcript_retention_days"),
+  // Default ON: several US states require all-party consent to record, so the
+  // consent notice is the fleet-wide baseline. Admins who disable it assume
+  // recording-law compliance responsibility (warned in /admin).
   recordingConsentRequired: boolean("recording_consent_required")
     .notNull()
-    .default(false),
+    .default(true),
   recordingConsentText: text("recording_consent_text"),
+  // Highest desktop-app major version this company's update license covers.
+  // Patch/minor releases within an installed major always flow; a higher
+  // major is only offered when this value reaches it. Managed from /owner.
+  desktopEntitledMajor: integer("desktop_entitled_major").notNull().default(1),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 export type Company = typeof companies.$inferSelect;
@@ -197,6 +209,28 @@ export const memberships = pgTable("memberships", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 export type Membership = typeof memberships.$inferSelect;
+
+/** Last-seen desktop shell per user — upserted by the update proxy when the
+ * shell polls for updates. One row per user; powers the /owner overview. */
+export const desktopClients = pgTable(
+  "desktop_clients",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    companyId: text("company_id")
+      .notNull()
+      .references(() => companies.id, { onDelete: "cascade" }),
+    version: text("version").notNull(),
+    lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    userUnique: uniqueIndex("desktop_clients_user_id_key").on(t.userId),
+    companyIdx: index("desktop_clients_company_id_idx").on(t.companyId),
+  }),
+);
+export type DesktopClient = typeof desktopClients.$inferSelect;
 
 export const projects = pgTable("projects", {
   id: id(),
@@ -298,6 +332,14 @@ export const speakerProfiles = pgTable("speaker_profiles", {
     .$type<"not_started" | "enrolled" | "needs_refresh">()
     .notNull()
     .default("not_started"),
+  // Biometric consent record (BIPA-grade): a voiceprint embedding may only be
+  // created after written notice + consent (VOICEPRINT_CONSENT_VERSION in
+  // lib/legal/version.ts). Enforced in app/api/meetings/enroll-voice.
+  consentAt: timestamp("consent_at"),
+  consentTextVersion: text("consent_text_version"),
+  consentByUserId: text("consent_by_user_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

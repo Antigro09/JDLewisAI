@@ -36,7 +36,7 @@ const PRIMARY_NAV = [
 export function Sidebar({
   user,
 }: {
-  user: { name: string; email: string; role: "ADMIN" | "MEMBER" };
+  user: { name: string; email: string; role: "SUPERADMIN" | "ADMIN" | "MEMBER" };
 }) {
   const pathname = usePathname();
   const appName = process.env.NEXT_PUBLIC_APP_NAME || "ContractorAI";
@@ -179,7 +179,9 @@ export function Sidebar({
 
         {/* Secondary group */}
         <nav className="space-y-1 border-t border-ember-border px-2 pt-2">
-          {user.role === "ADMIN" &&
+          {user.role === "SUPERADMIN" &&
+            navRow("/owner", "Owner console", Users, isActive("/owner"))}
+          {(user.role === "ADMIN" || user.role === "SUPERADMIN") &&
             navRow("/admin", "Admin", Users, isActive("/admin"))}
           {navRow("/settings", "Settings", Settings, isActive("/settings"))}
         </nav>
@@ -195,7 +197,11 @@ export function Sidebar({
                 {user.name}
               </div>
               <div className="truncate text-xs text-ember-faint">
-                {user.role === "ADMIN" ? "Admin" : "Member"}
+                {user.role === "SUPERADMIN"
+                  ? "Owner"
+                  : user.role === "ADMIN"
+                    ? "Admin"
+                    : "Member"}
               </div>
             </div>
             <form action={signOutAction} className="shrink-0">
@@ -208,6 +214,14 @@ export function Sidebar({
                 <LogOut size={16} />
               </button>
             </form>
+          </div>
+          <div className="mt-1.5 flex justify-center gap-3 text-[11px] text-ember-faint">
+            <Link href="/legal/terms" className="hover:underline">
+              Terms
+            </Link>
+            <Link href="/legal/privacy" className="hover:underline">
+              Privacy
+            </Link>
           </div>
         </div>
       </aside>

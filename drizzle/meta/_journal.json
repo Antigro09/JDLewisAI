@@ -36,6 +36,20 @@
       "when": 1783798469006,
       "tag": "0004_slimy_gabe_jones",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783820830584,
+      "tag": "0005_sweet_greymalkin",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783825711664,
+      "tag": "0006_lovely_skin",
+      "breakpoints": true
     }
   ]
 }

@@ -106,17 +106,27 @@ device.
 ## Desktop (Electron, `electron/` package)
 
 `electron/` is a separate npm package with its own `node_modules` (`npm install` inside it
-first). It does not bundle Next — `main.js` calls `loadURL()` on **`CONTRACTOR_AI_URL`**
-(default `http://localhost:3000`) and adds meeting-detection + loopback-audio IPC via
-`preload.js`. If the origin is unreachable it shows a retry screen instead of a blank window.
+first). It does not bundle Next — `main.js` calls `loadURL()` on the configured origin
+(packaged: `app-config.json`; dev: **`CONTRACTOR_AI_URL`**, default `http://localhost:3000`)
+and adds meeting-detection + loopback-audio IPC via `preload.js`. If the origin is
+unreachable it shows a retry screen instead of a blank window.
+
+The desktop app is the **primary client channel**: professional chrome (custom branded
+titlebar drawn by the web app under `html.desktop-shell`, native caption buttons via
+`titleBarOverlay`, no OS menu bar), a handshake header (`x-desktop-key`) that unlocks the
+production desktop-only gate, and license-gated auto-update. See `electron/README.md`.
 
 - **Dev:** `npm --prefix electron run dev` (or `npm run desktop:dev` from the repo root)
   against a running `npm run dev`.
-- **Build:** `npm run desktop:build` from the root (runs `electron-builder`) produces the NSIS
-  Windows installer.
-- **Auto-update:** electron-updater checks GitHub Releases (publish config
-  `Antigro09/JDLewisAI`) on launch; installed apps download and apply new releases
-  automatically.
+- **Build:** generate `electron/app-config.json` (`node electron/scripts/write-app-config.mjs`
+  with `DESKTOP_APP_URL`/`DESKTOP_GATE_SECRET` set), then `npm run desktop:build` from the
+  root (runs `electron-builder`) for the NSIS Windows installer.
+- **Updates:** installers publish to GitHub Releases (`Antigro09/JDLewisAI`, may be
+  private), but installed apps fetch updates through the hosted app's license-gated proxy
+  (`/api/desktop/update/<major>/…`): patches always flow; new majors only reach companies
+  whose entitled major (managed on `/owner`) covers them. Downloads happen quietly in the
+  background; **installing is user-initiated** — a small "Update" pill appears in the
+  titlebar and the user chooses when to restart. Nothing installs on quit.
 
 ### Release procedure (desktop)
 
@@ -138,12 +148,16 @@ Warnings:
 
 ## Production URL checklist
 
-The app is not yet deployed to a production domain. Once it is deployed to Vercel:
+The app is not yet deployed to a production domain. Once it is:
 
-1. **Electron:** set the fallback URL literal in `electron/main.js` (the
-   `CONTRACTOR_AI_URL || "http://localhost:3000"` default) to the production origin **before**
-   cutting an end-user desktop release — end users don't set env vars.
+1. **Electron:** set the `DESKTOP_APP_URL` and `DESKTOP_GATE_SECRET` GitHub repo secrets —
+   the release workflow bakes them into `electron/app-config.json` at build time (end users
+   don't set env vars; a packaged build without the config refuses to start). Set the same
+   `DESKTOP_GATE_SECRET` on the server to turn on the desktop-only gate, which also disables
+   public signup (the owner provisions accounts from `/owner`).
 2. **Mobile:** set `CAP_SERVER_URL` to the production domain for every release sync.
+   Note: with the desktop-only gate enabled, the Capacitor shells are locked out — they'd
+   need their own handshake before shipping again (desktop-first is the current model).
 3. **Google OAuth:** register the production redirect URIs in the Google Cloud console —
    `https://<domain>/api/google/callback` and `https://<domain>/api/auth/google/callback`
    (see the README's Google integration section).

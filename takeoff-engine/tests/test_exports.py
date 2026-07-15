@@ -4,6 +4,7 @@ from openpyxl import load_workbook
 
 from app.export.audit import audit_summary
 from app.export.csv_export import CSVExportAdapter
+from app.export.disclaimer import DISCLAIMER
 from app.export.excel import ExcelExportAdapter
 
 
@@ -66,12 +67,24 @@ def _payload():
     }
 
 
+def test_csv_export_starts_with_disclaimer(tmp_path):
+    out = tmp_path / "takeoff.csv"
+
+    CSVExportAdapter().export("p1", _payload(), str(out))
+
+    first_line = out.open().readline().strip()
+    assert first_line == f"# {DISCLAIMER}"
+    assert "Machine-assisted takeoff" in first_line
+
+
 def test_csv_export_includes_flat_audit_notes_and_attributes(tmp_path):
     out = tmp_path / "takeoff.csv"
 
     CSVExportAdapter().export("p1", _payload(), str(out))
 
-    rows = list(csv.DictReader(out.open()))
+    with out.open() as f:
+        f.readline()  # skip the leading disclaimer comment line
+        rows = list(csv.DictReader(f))
     assert rows[0]["audit_notes"] == (
         "22 accepted symbols; 17 unique scheduled marks; duplicate marks: 100A x2"
     )

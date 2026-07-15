@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { DesktopTitlebar } from "@/components/desktop-titlebar";
 import { sourceSerif, hankenGrotesk } from "./fonts";
 
 export const metadata: Metadata = {
@@ -35,7 +36,11 @@ export default function RootLayout({
       className={`${sourceSerif.variable} ${hankenGrotesk.variable}`}
     >
       <body className="bg-ember-bg font-sans text-ember-text">
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          {/* Hidden in browsers; shown via html.desktop-shell (Electron). */}
+          <DesktopTitlebar />
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );
