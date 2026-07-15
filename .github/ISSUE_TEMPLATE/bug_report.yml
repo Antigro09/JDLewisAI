@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a defect in ContractorAI (web, desktop, mobile, or Takeoff Engine)
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug and what you expected to happen instead.
+      placeholder: |
+        What happened:
+        ...
+
+        What I expected:
+        ...
+    validations:
+      required: true
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: Affected area
+      description: Which part of the platform is affected?
+      options:
+        - Web app
+        - Desktop
+        - Mobile
+        - Takeoff Engine
+        - CI/Infra
+    validations:
+      required: true
+  - type: textarea
+    id: repro-steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the behavior.
+      placeholder: |
+        1. Go to ...
+        2. Click on ...
+        3. See error
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      description: App version (e.g. v0.1.0, desktop-v1.0.0) or commit SHA, if known.
+      placeholder: v0.1.0 or a commit SHA
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this bug has not already been reported.
+          required: true

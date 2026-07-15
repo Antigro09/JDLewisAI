@@ -2,17 +2,53 @@ name: Takeoff Engine CI
 
 on:
   push:
-    branches: ["**"]
+    branches: [main, develop, "release/**", "hotfix/**"]
     paths: ["takeoff-engine/**", ".github/workflows/takeoff-engine-ci.yml"]
   pull_request:
-    paths: ["takeoff-engine/**", ".github/workflows/takeoff-engine-ci.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: takeoff-ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  test:
+  # "takeoff-tests" is a required status check, so it must report on every PR.
+  # pull_request therefore has NO paths filter above; this job decides whether
+  # takeoff-engine actually changed, and takeoff-tests skips when it did not.
+  # A skipped conclusion satisfies branch protection, so unrelated PRs pass.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      takeoff: ${{ steps.filter.outputs.takeoff }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: filter
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            git fetch origin "$BASE_REF"
+            changed="$(git diff --name-only "origin/$BASE_REF...HEAD")"
+            if printf '%s\n' "$changed" | grep -qE '^(takeoff-engine/|\.github/workflows/takeoff-engine-ci\.yml$)'; then
+              echo "takeoff=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "No takeoff-engine changes; takeoff-tests will be skipped."
+              echo "takeoff=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            # push runs are already gated by the paths filter; dispatch runs
+            # are explicit requests. Always test.
+            echo "takeoff=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  takeoff-tests:
+    needs: changes
+    if: needs.changes.outputs.takeoff == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:

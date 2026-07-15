@@ -1,0 +1,41 @@
+# CODEOWNERS for ContractorAI
+#
+# How this file is evaluated:
+#   - GitHub reads this file top to bottom, and the LAST matching pattern for a
+#     given file wins. Put broad defaults first and more specific area rules
+#     below them so the specific rules take precedence.
+#   - Branch protection on `main` requires a code-owner review, so every PR
+#     into `main` (release/* and hotfix/* branches) must be approved by the
+#     owner(s) matched here.
+#
+# All areas are currently owned by @Antigro09. As the team grows, replace or
+# extend individual area rules with additional owners or GitHub teams without
+# changing the overall structure. Example:
+#   /takeoff-engine/  @Antigro09 @contractor-ai/takeoff-team
+
+# Default owner for everything in the repo
+*                 @Antigro09
+
+# Web app (Next.js App Router)
+/app/             @Antigro09
+/components/      @Antigro09
+/lib/             @Antigro09
+
+# Takeoff Engine (Python FastAPI service)
+/takeoff-engine/  @Antigro09
+
+# Desktop app (Electron)
+/electron/        @Antigro09
+
+# Mobile app (Capacitor)
+/mobile/          @Antigro09
+
+# Database schema & migrations (Drizzle ORM)
+/drizzle/         @Antigro09
+
+# CI/CD, automation, and repo configuration
+/.github/         @Antigro09
+/scripts/         @Antigro09
+
+# Documentation
+/docs/            @Antigro09

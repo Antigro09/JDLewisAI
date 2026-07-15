@@ -59,6 +59,17 @@ npm run dev
 Open http://localhost:3000 — sign in as the admin, or employees can self-register at `/signup`.
 Set `ALLOWED_SIGNUP_DOMAIN` (e.g. `yourcompany.com`) to restrict self-registration.
 
+## Development workflow (GitFlow)
+
+The repo follows a GitFlow branching model: `main` is production (every merge is a tagged
+release), `develop` is the integration branch, and work happens on `feature/*` / `bugfix/*`
+branches merged via pull request. Releases go out through `release/x.y.z` branches and
+production emergencies through `hotfix/x.y.z`, with tagging and back-merges automated.
+
+- Contributor guide (branch naming, Conventional Commit PR titles, checks): **[CONTRIBUTING.md](CONTRIBUTING.md)**
+- Full branching model, runbooks, and protection rules: **[docs/gitflow/README.md](docs/gitflow/README.md)**
+- One-time bootstrap + release scripts: **[scripts/gitflow/README.md](scripts/gitflow/README.md)**
+
 ## Deploy (Vercel + Neon)
 
 1. Create a Neon Postgres database; set `DATABASE_URL` (pooled) and `DIRECT_URL` (direct).

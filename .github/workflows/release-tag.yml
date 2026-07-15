@@ -1,0 +1,64 @@
+name: Release Tagging
+
+# When a release/x.y.z or hotfix/x.y.z PR merges into main, tag the merge
+# commit vX.Y.Z and publish a GitHub Release. The generated release notes
+# are grouped by the categories configured in .github/release.yml.
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag-release:
+    if: github.event.pull_request.merged == true && (startsWith(github.event.pull_request.head.ref, 'release/') || startsWith(github.event.pull_request.head.ref, 'hotfix/'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+      - name: Tag and publish release
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${HEAD_REF#release/}"
+          VERSION="${VERSION#hotfix/}"
+
+          semver='^[0-9]+\.[0-9]+\.[0-9]+$'
+          if [[ ! "$VERSION" =~ $semver ]]; then
+            echo "::error::Cannot derive a version from branch '$HEAD_REF'."
+            echo ""
+            echo "Release and hotfix branches must be named release/x.y.z or"
+            echo "hotfix/x.y.z with a strict SemVer version (e.g. release/1.4.0)."
+            echo "No tag or GitHub Release was created for this merge; rename the"
+            echo "branch pattern next time, or tag manually: git tag -a vX.Y.Z <sha>"
+            echo ""
+            echo "See docs/gitflow/README.md for the release process."
+            exit 1
+          fi
+
+          git fetch --tags origin
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "::notice::Tag v$VERSION already exists; skipping tag creation."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "v$VERSION" -m "Release v$VERSION" "$MERGE_SHA"
+            git push origin "v$VERSION"
+          fi
+
+          # Checked separately from the tag so a re-run can finish the job if
+          # a previous run pushed the tag but failed before creating the
+          # GitHub Release.
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "::notice::GitHub Release v$VERSION already exists; nothing to do."
+            exit 0
+          fi
+
+          gh release create "v$VERSION" --title "v$VERSION" --generate-notes --verify-tag
+          echo "Created tag v$VERSION and its GitHub Release."
