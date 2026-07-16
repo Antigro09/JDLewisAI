@@ -6,6 +6,7 @@ import { stopLiveMeetingTranscription } from "@/lib/meetings/live";
 import { analyzeMeeting, generateMeetingMinutes } from "@/lib/meetings/analysis";
 import { indexMeetingMemory } from "@/lib/meetings/memory";
 import { recordAudit } from "@/lib/audit";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -51,10 +52,12 @@ export async function POST(
     await analyzeMeeting(user, id);
     const minutes = await generateMeetingMinutes(user, id);
     // Index into semantic memory (best-effort — never fail closeout on this).
+    // Log the failure so a transient embeddings outage that drops this meeting
+    // from semantic recall is diagnosable rather than silent.
     try {
       await indexMeetingMemory(id, meeting.companyId);
-    } catch {
-      // pgvector/embeddings not available; FTS memory still works.
+    } catch (err) {
+      log.error("meetings.index_memory_failed", err, { meetingId: id });
     }
     await recordAudit({
       userId: user.id,

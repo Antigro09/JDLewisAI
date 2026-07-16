@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { conversations, type MessageBlock } from "@/lib/db/schema";
+import { conversations, projects, type MessageBlock } from "@/lib/db/schema";
 import { getCurrentUser } from "@/lib/auth/server";
 import { applyPendingDecisions } from "@/lib/claude/agent";
 import { generate } from "@/lib/claude/chat";
@@ -114,11 +114,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
     }
   } else {
+    // Only bind the conversation to a project the caller actually owns —
+    // otherwise buildChatSystem would fold another user's project files and
+    // instructions into this user's system prompt (IDOR → cross-tenant leak).
+    let boundProjectId: string | null = null;
+    if (body.projectId) {
+      const owned = (
+        await db
+          .select({ id: projects.id })
+          .from(projects)
+          .where(and(eq(projects.id, body.projectId), eq(projects.ownerId, user.id)))
+      )[0];
+      if (!owned) {
+        return NextResponse.json({ error: "Project not found" }, { status: 404 });
+      }
+      boundProjectId = owned.id;
+    }
     const created = await db
       .insert(conversations)
       .values({
         userId: user.id,
-        projectId: body.projectId || null,
+        projectId: boundProjectId,
         title: truncate(message || "New chat", 50),
         model: model.id,
         effort,

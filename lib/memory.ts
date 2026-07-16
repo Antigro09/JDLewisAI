@@ -52,14 +52,33 @@ export function buildMemoryPrompt(rows: Memory[]): string {
     if (!byCat.has(label)) byCat.set(label, []);
     byCat.get(label)!.push(m.content);
   }
-  const parts: string[] = [];
-  for (const [label, items] of byCat) {
-    parts.push(`${label}:\n${items.map((i) => `- ${i}`).join("\n")}`);
-  }
-  let text =
+  const header =
     "Remembered context — durable facts about this company/user. Apply them unless the " +
-    "user says otherwise:\n\n" +
-    parts.join("\n\n");
-  if (text.length > 12_000) text = text.slice(0, 12_000) + "\n…[truncated]";
+    "user says otherwise:\n\n";
+  const BUDGET = 12_000;
+
+  // Drop whole memories (never cut one mid-sentence — that can silently turn a
+  // conditional rule like "never substitute X unless the engineer approves"
+  // into an absolute one). Fill category blocks item-by-item until the budget
+  // is spent.
+  const blocks: string[] = [];
+  let used = header.length;
+  let dropped = 0;
+  for (const [label, items] of byCat) {
+    const kept: string[] = [];
+    for (const item of items) {
+      const line = `- ${item}`;
+      const cost = (kept.length === 0 ? label.length + 1 : 0) + line.length + 1;
+      if (used + cost > BUDGET) {
+        dropped++;
+        continue;
+      }
+      used += cost;
+      kept.push(line);
+    }
+    if (kept.length) blocks.push(`${label}:\n${kept.join("\n")}`);
+  }
+  let text = header + blocks.join("\n\n");
+  if (dropped > 0) text += `\n\n…[${dropped} more memor${dropped === 1 ? "y" : "ies"} omitted for length]`;
   return text;
 }

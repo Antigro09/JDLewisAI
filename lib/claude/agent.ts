@@ -10,7 +10,7 @@ import { anthropic } from "./client";
 import { resolveModel } from "./models";
 import { attachmentBlocks, buildSystemBlocks } from "./chat";
 import { classifyModelError } from "./errors";
-import { UNTRUSTED_MARKER_BEGIN, UNTRUSTED_MARKER_END } from "./system";
+import { wrapUntrusted } from "./system";
 import type { Attachment, SystemPromptParts } from "./types";
 import { type ToolExecutionContext } from "@/lib/tools/google-tools";
 // Side-effect import: populates the tool registry with every tool.
@@ -91,20 +91,7 @@ function attachmentApiBlocks(a: Attachment): ApiContentBlock[] {
   return attachmentBlocks(a) as unknown as ApiContentBlock[];
 }
 
-/** Fence attacker-controlled tool output (Gmail/Drive content etc.) in the
- * markers UNTRUSTED_CONTENT_NOTE declares to be data, never instructions. Any
- * run of angle brackets around the marker token is collapsed to a bracket-free
- * placeholder — a simple split/join that only stripped the exact 3-bracket
- * marker could be defeated by bracket padding (e.g. `<<<<END…>>>>` rebuilds the
- * real marker after one pass), so we match `<{2,}TOKEN>{2,}` and leave no
- * brackets behind for a second reassembly. */
-function wrapUntrusted(output: string): string {
-  const neutralized = output.replace(
-    /<{2,}(BEGIN|END)_EXTERNAL_UNTRUSTED_CONTENT>{2,}/g,
-    "[external-marker]",
-  );
-  return `${UNTRUSTED_MARKER_BEGIN}\n${neutralized}\n${UNTRUSTED_MARKER_END}`;
-}
+// wrapUntrusted moved to ./system (shared with the knowledge-search path).
 
 /**
  * Run one registry tool, streaming its `onProgress` callbacks out as

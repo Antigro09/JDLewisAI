@@ -6,7 +6,8 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { projects, projectFiles } from "@/lib/db/schema";
 import { requireUser } from "@/lib/auth/server";
-import { readUploadOrThrow } from "@/lib/uploads";
+import { readUploadOrThrow, normalizeUploadMime } from "@/lib/uploads";
+import { ensureProjectFileEmbeddings } from "@/lib/retrieval";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
@@ -62,13 +63,23 @@ export async function uploadProjectFile(projectId: string, formData: FormData) {
   if (!(file instanceof File) || file.size === 0) return;
   // Enforces the size ceiling and magic-byte/MIME consistency.
   const buf = await readUploadOrThrow(file, { maxBytes: MAX_FILE_BYTES });
+  // Revision handling: re-uploading a file with the same name replaces the
+  // prior one (its embeddings cascade-delete) so search never cites a
+  // superseded revision alongside the current one.
+  await db
+    .delete(projectFiles)
+    .where(and(eq(projectFiles.projectId, projectId), eq(projectFiles.name, file.name)));
   await db.insert(projectFiles).values({
     projectId,
     name: file.name,
-    mime: file.type || "application/octet-stream",
+    mime: normalizeUploadMime(file.name, file.type),
     sizeBytes: file.size,
     data: buf.toString("base64"),
   });
+  // Index in the background so the first search doesn't pay for chunking and
+  // embedding inline. ensureProjectFileEmbeddings never throws (it logs), and
+  // the search route keeps a backstop call for anything this misses.
+  void ensureProjectFileEmbeddings(projectId);
   revalidatePath(`/projects/${projectId}`);
 }
 

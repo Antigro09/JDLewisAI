@@ -16,6 +16,7 @@ import {
   getTakeoffResultsTool,
   materialTakeoffTool,
 } from "@/lib/tools/engines/material-takeoff-tool";
+import { knowledgeSearchTool } from "@/lib/tools/knowledge-search";
 
 /**
  * The single place tools plug into the registry (Phase 16). Importing this
@@ -74,3 +75,4 @@ for (const t of LOCAL_TOOLS) safeRegister(fromLocalTool(t));
 for (const t of GOOGLE_TOOLS) safeRegister(fromGoogleTool(t));
 safeRegister(materialTakeoffTool);
 safeRegister(getTakeoffResultsTool);
+safeRegister(knowledgeSearchTool);

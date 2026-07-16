@@ -1,0 +1,41 @@
+{
+  "description": "Golden retrieval cases for the Project Knowledge search. Seed a project with the referenced documents, then run `npm run rag:eval -- <projectId>`. `expectSubstrings` is an OR-set: at least one retrieved passage (content or filename) must contain one of them. Set expectNoAnswer for questions the corpus cannot answer — the system should abstain, not hallucinate.",
+  "cases": [
+    {
+      "id": "waterproofing-detail",
+      "question": "Where is the waterproofing detail?",
+      "expectSubstrings": ["waterproofing", "membrane", "07 13", "07 14", "below-grade"]
+    },
+    {
+      "id": "fire-stopping-spec",
+      "question": "Which specification covers fire stopping?",
+      "expectSubstrings": ["fire stop", "firestop", "07 84", "penetration firestop"]
+    },
+    {
+      "id": "concrete-strength",
+      "question": "What is the concrete compressive strength requirement for slabs on grade?",
+      "expectSubstrings": ["psi", "compressive strength", "f'c", "4000", "3000"]
+    },
+    {
+      "id": "rebar-branch",
+      "question": "What size reinforcing is called for at the footings?",
+      "expectSubstrings": ["#4", "#5", "#6", "rebar", "reinforc"]
+    },
+    {
+      "id": "rfi-electrical-conflict",
+      "question": "Find every RFI about electrical conflicts.",
+      "expectSubstrings": ["RFI", "electrical", "conflict"]
+    },
+    {
+      "id": "sheet-reference",
+      "question": "What is shown on sheet A503?",
+      "expectSubstrings": ["A503", "A-503"]
+    },
+    {
+      "id": "abstain-unknown",
+      "question": "What is the warranty period for the elevator hydraulic pump seals?",
+      "expectSubstrings": [],
+      "expectNoAnswer": true
+    }
+  ]
+}

@@ -50,6 +50,13 @@
       "when": 1783825711664,
       "tag": "0006_lovely_skin",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784142770943,
+      "tag": "0007_flowery_nekra",
+      "breakpoints": true
     }
   ]
 }

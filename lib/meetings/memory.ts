@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   meetingEmbeddings,
@@ -20,18 +20,30 @@ import { log } from "@/lib/log";
 
 const CHUNK_CHARS = 600;
 
+/** Split a speaker line that alone exceeds CHUNK_CHARS into windows, so a
+ * single long segment never becomes a chunk larger than what embedTexts
+ * actually embeds (it truncates input at 8,000 chars) — otherwise the stored
+ * content and its vector would silently disagree. */
+function splitLongLine(line: string): string[] {
+  if (line.length <= CHUNK_CHARS) return [line];
+  const parts: string[] = [];
+  for (let i = 0; i < line.length; i += CHUNK_CHARS) parts.push(line.slice(i, i + CHUNK_CHARS));
+  return parts;
+}
+
 function chunkTranscript(
   segments: { speakerName: string | null; speakerLabel: string; text: string }[],
 ): string[] {
   const chunks: string[] = [];
   let buf = "";
   for (const s of segments) {
-    const line = `${s.speakerName || s.speakerLabel}: ${s.text}`;
-    if ((buf + "\n" + line).length > CHUNK_CHARS && buf) {
-      chunks.push(buf);
-      buf = line;
-    } else {
-      buf = buf ? `${buf}\n${line}` : line;
+    for (const line of splitLongLine(`${s.speakerName || s.speakerLabel}: ${s.text}`)) {
+      if ((buf + "\n" + line).length > CHUNK_CHARS && buf) {
+        chunks.push(buf);
+        buf = line;
+      } else {
+        buf = buf ? `${buf}\n${line}` : line;
+      }
     }
   }
   if (buf) chunks.push(buf);
@@ -50,7 +62,12 @@ export async function indexMeetingMemory(meetingId: string, companyId: string): 
         text: transcriptSegments.text,
       })
       .from(transcriptSegments)
-      .where(eq(transcriptSegments.meetingId, meetingId)),
+      .where(eq(transcriptSegments.meetingId, meetingId))
+      // Chronological order — Postgres gives no order without ORDER BY, and
+      // speaker-name updates after diarization physically relocate rows, so an
+      // unordered scan can juxtapose utterances from different points in the
+      // meeting and present a false conversational sequence.
+      .orderBy(asc(transcriptSegments.sequence)),
     db.select().from(meetingActionItems).where(eq(meetingActionItems.meetingId, meetingId)),
     db.select().from(meetingDecisions).where(eq(meetingDecisions.meetingId, meetingId)),
     db.select().from(meetingRisks).where(eq(meetingRisks.meetingId, meetingId)),
@@ -80,7 +97,13 @@ export async function indexMeetingMemory(meetingId: string, companyId: string): 
   if (items.length === 0) return;
 
   const vectors = await embedTexts(items.map((i) => i.content));
-  if (!vectors) return;
+  if (!vectors) {
+    // null = provider returned a mismatched count (embedTexts throws on real
+    // errors, which the caller logs). Leave a trace rather than silently
+    // dropping the meeting from semantic memory.
+    log.warn("meetings.index_memory.count_mismatch", { meetingId, items: items.length });
+    return;
+  }
 
   await db.delete(meetingEmbeddings).where(eq(meetingEmbeddings.meetingId, meetingId));
   await db.insert(meetingEmbeddings).values(

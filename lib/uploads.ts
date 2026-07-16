@@ -31,6 +31,45 @@ const MAGIC_CHECKS: Record<string, (b: Buffer) => boolean> = {
   "application/pdf": (b) => b.subarray(0, 1024).includes("%PDF-"),
 };
 
+/** Extension → canonical MIME for the text types the indexer understands.
+ * Browsers report these inconsistently (Windows sends application/vnd.ms-excel
+ * for .csv; many send "" for .md/.log), which would otherwise leave the file
+ * stored but permanently unindexable. */
+const EXT_MIME: Record<string, string> = {
+  csv: "text/csv",
+  tsv: "text/tab-separated-values",
+  txt: "text/plain",
+  md: "text/markdown",
+  markdown: "text/markdown",
+  log: "text/plain",
+  json: "application/json",
+  xml: "application/xml",
+  pdf: "application/pdf",
+};
+
+/** Non-text/document MIMEs we trust from the browser as-is. */
+function isIndexableClaim(mime: string): boolean {
+  return (
+    mime.startsWith("text/") ||
+    ["application/json", "application/xml", "application/csv", "application/pdf"].includes(mime)
+  );
+}
+
+/**
+ * Resolve the MIME we store for an upload: prefer an extension mapping for text
+ * types the browser mis-labels, otherwise keep the browser's type, otherwise
+ * octet-stream. Keeps ingestion from silently darkening common estimator files
+ * (a .csv exported from Excel on Windows).
+ */
+export function normalizeUploadMime(fileName: string, claimedMime: string): string {
+  const ext = fileName.toLowerCase().split(".").pop() ?? "";
+  const mapped = EXT_MIME[ext];
+  // Extension mapping wins when the browser gave nothing useful or a
+  // non-indexable label for a file whose extension we recognize as text.
+  if (mapped && (!claimedMime || !isIndexableClaim(claimedMime))) return mapped;
+  return claimedMime || mapped || "application/octet-stream";
+}
+
 /** Null when the content is plausible for the claimed MIME, else an error message. */
 export function uploadValidationError(
   buf: Buffer,

@@ -10,6 +10,7 @@ import {
   meetingSessions,
 } from "@/lib/db/schema";
 import type { MeetingState } from "@/lib/db/schema";
+import { escapeLike } from "@/lib/retrieval";
 import { runAgent, objectSchema, text, type AgentContext } from "./base";
 
 /**
@@ -76,7 +77,9 @@ Return STRICT JSON only: {"references":[{"term":"...","refType":"drawing|spec|rf
   };
 
   for (const term of terms) {
-    const pattern = `%${term}%`;
+    // Terms come from an LLM over meeting audio — escape LIKE wildcards so a
+    // term like "100%" or "a_b" can't turn into an unintended broad match.
+    const pattern = `%${escapeLike(term)}%`;
 
     if (projectIds.length) {
       const [files, rfiRows, subRows, coRows] = await Promise.all([
