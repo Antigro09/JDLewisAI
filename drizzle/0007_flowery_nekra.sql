@@ -1,0 +1,2 @@
+ALTER TABLE "project_file_embeddings" ADD COLUMN "page" integer;--> statement-breakpoint
+CREATE INDEX "project_file_embeddings_fts_idx" ON "project_file_embeddings" USING gin (to_tsvector('english', "content"));

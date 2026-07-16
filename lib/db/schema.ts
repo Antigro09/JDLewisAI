@@ -503,6 +503,9 @@ export const projectFileEmbeddings = pgTable("project_file_embeddings", {
     .notNull()
     .references(() => projectFiles.id, { onDelete: "cascade" }),
   chunkIndex: integer("chunk_index").notNull().default(0),
+  /** 1-based source page for paginated formats (PDF); null for plain text.
+   * Carried into citations so answers can point at a sheet/page. */
+  page: integer("page"),
   content: text("content").notNull(),
   embedding: vector("embedding", { dimensions: 1536 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -512,6 +515,12 @@ export const projectFileEmbeddings = pgTable("project_file_embeddings", {
   embeddingIdx: index("project_file_embeddings_embedding_idx").using(
     "hnsw",
     t.embedding.op("vector_cosine_ops"),
+  ),
+  // Keyword half of hybrid retrieval: BM25-ish ranked full-text search over
+  // chunk content (ts_rank_cd + websearch_to_tsquery at query time).
+  ftsIdx: index("project_file_embeddings_fts_idx").using(
+    "gin",
+    sql`to_tsvector('english', ${t.content})`,
   ),
 }));
 export type ProjectFileEmbedding = typeof projectFileEmbeddings.$inferSelect;

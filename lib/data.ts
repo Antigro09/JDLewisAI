@@ -14,6 +14,7 @@ import type { SystemPromptParts } from "@/lib/claude/types";
 import { resolveActiveSkills, buildSkillsPrompt } from "@/lib/skills";
 import { listMemories, buildMemoryPrompt } from "@/lib/memory";
 import { buildActivePath, getSiblings } from "@/lib/chat/branches";
+import { isPlainTextMime } from "@/lib/extract";
 import type { ModelOption } from "@/components/chat/chat-client";
 
 export function modelOptions(): ModelOption[] {
@@ -185,23 +186,36 @@ export async function buildChatSystem(
   const memoryPrompt = buildMemoryPrompt(await listMemories(user));
 
   if (conv.projectId) {
+    // Scope by ownerId as well as id: a conversation must never surface a
+    // project the caller doesn't own, even if projectId was set to another
+    // user's project id (defense in depth behind the route's own check).
     const proj = (
-      await db.select().from(projects).where(eq(projects.id, conv.projectId))
+      await db
+        .select()
+        .from(projects)
+        .where(and(eq(projects.id, conv.projectId), eq(projects.ownerId, user.id)))
     )[0];
     if (proj) {
       projectName = proj.name;
       let extra = proj.instructions ? proj.instructions + "\n" : "";
       let budget = 50_000;
+      // Metadata only — never pull every file's base64 body just to name it.
+      // The large `data` column is fetched per-file, and only for the text
+      // files whose content actually goes into the prompt.
       const files = await db
-        .select()
+        .select({ id: projectFiles.id, name: projectFiles.name, mime: projectFiles.mime })
         .from(projectFiles)
         .where(eq(projectFiles.projectId, conv.projectId));
       for (const f of files) {
-        if (f.mime.startsWith("text/") || f.mime === "application/json") {
-          if (budget <= 0) break;
+        const isText = isPlainTextMime(f.mime);
+        if (isText && budget > 0) {
+          const [row] = await db
+            .select({ data: projectFiles.data })
+            .from(projectFiles)
+            .where(eq(projectFiles.id, f.id));
           let content = "";
           try {
-            content = Buffer.from(f.data, "base64").toString("utf8");
+            content = Buffer.from(row?.data ?? "", "base64").toString("utf8");
           } catch {
             content = "";
           }

@@ -13,8 +13,16 @@ type Citation = {
   projectId: string;
   projectName: string;
   chunkIndex: number;
+  page: number | null;
   snippet: string;
   score: number;
+};
+
+type RecordHit = {
+  kind: "rfi" | "submittal" | "change_order";
+  title: string;
+  status: string;
+  snippet: string;
 };
 
 export default function SearchPage() {
@@ -22,6 +30,7 @@ export default function SearchPage() {
   const [answer, setAnswer] = useState<string | null>(null);
   const [filesSearched, setFilesSearched] = useState<number | null>(null);
   const [citations, setCitations] = useState<Citation[]>([]);
+  const [records, setRecords] = useState<RecordHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +41,7 @@ export default function SearchPage() {
     setError(null);
     setAnswer(null);
     setCitations([]);
+    setRecords([]);
     try {
       const res = await fetch("/api/search", {
         method: "POST",
@@ -42,12 +52,14 @@ export default function SearchPage() {
         answer?: string;
         filesSearched?: number;
         citations?: Citation[];
+        records?: RecordHit[];
         error?: string;
       };
       if (!res.ok) throw new Error(data.error ?? "Search failed");
       setAnswer(data.answer ?? "");
       setFilesSearched(data.filesSearched ?? 0);
       setCitations(data.citations ?? []);
+      setRecords(data.records ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");
     } finally {
@@ -82,23 +94,51 @@ export default function SearchPage() {
         <Card className="p-5">
           {filesSearched !== null && (
             <p className="mb-3 text-xs text-neutral-400">
-              Searched {filesSearched} text file{filesSearched !== 1 ? "s" : ""} across your projects
+              {filesSearched > 0
+                ? `Answer grounded on ${filesSearched} source file${filesSearched !== 1 ? "s" : ""}`
+                : "No matching source files"}
             </p>
           )}
           <div className="overflow-x-auto">
             <Markdown content={answer} />
           </div>
-          {citations.length > 0 && (
+          {(() => {
+            // Only list sources the answer actually cited ([n] markers). If the
+            // model cited nothing (e.g. "I could not find this"), show none —
+            // an unreferenced Sources list reads as false grounding.
+            const cited = new Set(
+              [...(answer ?? "").matchAll(/\[(\d+)\]/g)].map((m) => Number(m[1])),
+            );
+            const shown = citations.filter((c) => cited.has(c.index));
+            return shown.length > 0 ? (
             <div className="mt-4 border-t border-neutral-200 pt-3">
               <p className="text-xs font-medium text-neutral-500">Sources</p>
               <ul className="mt-2 space-y-2">
-                {citations.map((c) => (
+                {shown.map((c) => (
                   <li key={`${c.fileId}-${c.chunkIndex}`} className="text-xs text-neutral-500">
                     <span className="font-medium text-neutral-700">
                       [{c.index}] {c.fileName}
+                      {c.page ? ` — p.${c.page}` : ""}
                     </span>
                     <span> — {c.projectName}</span>
                     <p className="mt-0.5 text-neutral-400">{c.snippet}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            ) : null;
+          })()}
+          {records.length > 0 && (
+            <div className="mt-4 border-t border-neutral-200 pt-3">
+              <p className="text-xs font-medium text-neutral-500">Related records</p>
+              <ul className="mt-2 space-y-2">
+                {records.map((r, i) => (
+                  <li key={`rec-${i}`} className="text-xs text-neutral-500">
+                    <span className="font-medium text-neutral-700">{r.title}</span>
+                    <span className="ml-1 rounded bg-neutral-100 px-1 py-0.5 text-[10px] uppercase tracking-wide text-neutral-500">
+                      {r.kind.replace("_", " ")} · {r.status}
+                    </span>
+                    <p className="mt-0.5 text-neutral-400">{r.snippet}</p>
                   </li>
                 ))}
               </ul>
@@ -111,9 +151,9 @@ export default function SearchPage() {
         <div className="mt-6 text-sm text-neutral-500">
           <p className="font-medium">Tips:</p>
           <ul className="mt-1 list-disc pl-5 space-y-1">
-            <li>Upload text-based specs, notes, or CSV files to your projects for best results.</li>
-            <li>PDFs and images are not searchable — convert them to text first.</li>
-            <li>Ask specific questions for more precise answers.</li>
+            <li>Text files, CSVs, and PDFs with selectable text are searchable; answers cite file and page.</li>
+            <li>Scanned drawings and photos without embedded text are not indexed yet.</li>
+            <li>Ask specific questions — sheet numbers, spec sections, and RFI numbers all help.</li>
           </ul>
         </div>
       )}

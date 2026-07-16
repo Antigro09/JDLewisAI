@@ -17,6 +17,7 @@
     "db:push": "drizzle-kit push",
     "db:seed": "tsx lib/db/seed.ts",
     "db:promote-superadmin": "tsx scripts/promote-superadmin.ts",
+    "rag:eval": "tsx scripts/rag-eval.ts",
     "desktop:dev": "npm --prefix electron run dev",
     "desktop:build": "node scripts/build-eula.mjs && npm --prefix electron run build",
     "legal:eula": "node scripts/build-eula.mjs"
@@ -39,6 +40,7 @@
     "rehype-highlight": "^7.0.1",
     "remark-gfm": "^4.0.0",
     "tailwind-merge": "^2.6.0",
+    "unpdf": "^1.6.2",
     "ws": "^8.21.0",
     "zod": "^3.24.1"
   },
