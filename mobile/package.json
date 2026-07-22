@@ -17,7 +17,7 @@
   },
   "devDependencies": {
     "@capacitor/assets": "^3",
-    "@capacitor/cli": "^7",
+    "@capacitor/cli": "^8",
     "typescript": "^5"
   }
 }
