@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@capacitor/android": "^7",
-    "@capacitor/core": "^7",
+    "@capacitor/core": "^8",
     "@capacitor/ios": "^7"
   },
   "devDependencies": {
