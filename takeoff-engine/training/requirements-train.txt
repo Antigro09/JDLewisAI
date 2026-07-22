@@ -15,5 +15,5 @@ pillow>=10.0
 numpy>=1.26
 
 # Sheet-type classifier — PRIORITY 3
-scikit-learn>=1.4
+scikit-learn>=1.9.0
 joblib>=1.3
