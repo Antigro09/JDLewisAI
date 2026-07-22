@@ -6,7 +6,7 @@
 rfdetr>=1.0
 torch>=2.2
 torchvision>=0.17
-supervision>=0.22        # rf-detr returns sv.Detections
+supervision>=0.29.1        # rf-detr returns sv.Detections
 
 # Segmentation (SegFormer) — PRIORITY 2
 transformers>=4.44
