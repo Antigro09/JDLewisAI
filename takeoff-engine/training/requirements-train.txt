@@ -10,7 +10,7 @@ supervision>=0.22        # rf-detr returns sv.Detections
 
 # Segmentation (SegFormer) — PRIORITY 2
 transformers>=4.44
-datasets>=2.20
+datasets>=5.0.0
 pillow>=10.0
 numpy>=1.26
 
