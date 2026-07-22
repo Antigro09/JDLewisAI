@@ -26,7 +26,7 @@ jobs:
       ENCRYPTION_KEY: "Y2ktcGxhY2Vob2xkZXIta2V5LWNpLXBsYWNlaG9sZA=="
       ANTHROPIC_API_KEY: "sk-ant-ci-placeholder"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: 22
