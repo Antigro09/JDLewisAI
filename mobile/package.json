@@ -11,7 +11,7 @@
     "assets": "capacitor-assets generate --assetPath assets --iconBackgroundColor '#ea580c' --iconBackgroundColorDark '#431407'"
   },
   "dependencies": {
-    "@capacitor/android": "^7",
+    "@capacitor/android": "^8",
     "@capacitor/core": "^7",
     "@capacitor/ios": "^7"
   },
